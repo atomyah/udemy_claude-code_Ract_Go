@@ -1,0 +1,32 @@
+# 環境変数
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# Go ビルド成果物
+backend/tmp/
+backend/server
+
+# フロントエンド
+frontend/node_modules/
+frontend/dist/
+frontend/src/api/generated/
+
+# Firebase 認証情報
+*.serviceAccountKey.json
+firebase-credentials.json
+service-account.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ログ
+*.log

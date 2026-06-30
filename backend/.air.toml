@@ -1,0 +1,25 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  pre_cmd  = ["go mod download"]
+  cmd      = "go build -o ./tmp/main ./cmd/server"
+  bin      = "./tmp/main"
+  delay    = 1000
+  exclude_dir  = ["docs", "tmp", "vendor", "frontend"]
+  include_ext  = ["go"]
+  exclude_regex = ["_test\\.go"]
+  kill_delay   = "0.5s"
+  rerun        = false
+
+[log]
+  time = false
+
+[color]
+  main    = "magenta"
+  watcher = "cyan"
+  build   = "yellow"
+  runner  = "green"
+
+[misc]
+  clean_on_exit = true

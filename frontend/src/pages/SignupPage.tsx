@@ -61,7 +61,10 @@ const SignupPage = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', p: 2 }}>
+    <Box
+      data-testid="signup-page"
+      sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', p: 2 }}
+    >
       <Card sx={{ width: '100%', maxWidth: 420 }}>
         <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
@@ -69,7 +72,9 @@ const SignupPage = () => {
           </Typography>
 
           {error && (
-            <Alert severity="error">{getApiErrorMessage(error, '登録に失敗しました。入力内容をご確認ください')}</Alert>
+            <Alert severity="error" data-testid="signup-error">
+              {getApiErrorMessage(error, '登録に失敗しました。入力内容をご確認ください')}
+            </Alert>
           )}
           {googleError && (
             <Alert severity="error">{getApiErrorMessage(googleError, 'Google登録に失敗しました')}</Alert>
@@ -86,6 +91,7 @@ const SignupPage = () => {
               autoComplete="email"
               error={!!errors.email}
               helperText={errors.email?.message}
+              slotProps={{ htmlInput: { 'data-testid': 'signup-email' } }}
               {...register('email', {
                 required: 'メールアドレスを入力してください',
                 pattern: {
@@ -99,6 +105,7 @@ const SignupPage = () => {
               autoComplete="name"
               error={!!errors.displayName}
               helperText={errors.displayName?.message}
+              slotProps={{ htmlInput: { 'data-testid': 'signup-display-name' } }}
               {...register('displayName', {
                 required: '表示名を入力してください',
                 maxLength: { value: 50, message: '表示名は50文字以内で入力してください' },
@@ -109,6 +116,7 @@ const SignupPage = () => {
               autoComplete="username"
               error={!!errors.handle}
               helperText={errors.handle?.message ?? '英数字とアンダースコアのみ使用できます'}
+              slotProps={{ htmlInput: { 'data-testid': 'signup-handle' } }}
               {...register('handle', {
                 required: 'ユーザーIDを入力してください',
                 pattern: {
@@ -124,6 +132,7 @@ const SignupPage = () => {
               error={!!errors.password}
               helperText={errors.password?.message}
               slotProps={{
+                htmlInput: { 'data-testid': 'signup-password' },
                 input: {
                   endAdornment: (
                     <IconButton
@@ -148,12 +157,13 @@ const SignupPage = () => {
               autoComplete="new-password"
               error={!!errors.confirmPassword}
               helperText={errors.confirmPassword?.message}
+              slotProps={{ htmlInput: { 'data-testid': 'signup-confirm-password' } }}
               {...register('confirmPassword', {
                 required: '確認用パスワードを入力してください',
                 validate: (value) => value === watch('password') || 'パスワードが一致しません',
               })}
             />
-            <Button type="submit" variant="contained" size="large" disabled={isPending}>
+            <Button type="submit" variant="contained" size="large" disabled={isPending} data-testid="signup-submit">
               {isPending ? <CircularProgress size={24} color="inherit" /> : '登録する'}
             </Button>
           </Box>

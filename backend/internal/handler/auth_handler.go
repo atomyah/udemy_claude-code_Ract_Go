@@ -45,7 +45,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 	if err := h.validate.Struct(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
 			Code:    "VALIDATION_ERROR",
-			Message: err.Error(),
+			Message: validationMessage(err),
 		})
 	}
 
@@ -92,7 +92,7 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	if err := h.validate.Struct(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
 			Code:    "VALIDATION_ERROR",
-			Message: err.Error(),
+			Message: validationMessage(err),
 		})
 	}
 
@@ -184,7 +184,38 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 // @Failure      500   {object} dto.ErrorResponse        "サーバーエラー"
 // @Router       /auth/google [post]
 func (h *AuthHandler) GoogleLogin(c echo.Context) error {
-	return c.JSON(http.StatusNotImplemented, dto.ErrorResponse{Code: "NOT_IMPLEMENTED", Message: "Google OAuth は未実装です（Firebase連携フェーズで実装予定）"})
+	var req dto.GoogleLoginRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Code:    "INVALID_REQUEST",
+			Message: "リクエストの形式が不正です",
+		})
+	}
+	if err := h.validate.Struct(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Code:    "VALIDATION_ERROR",
+			Message: validationMessage(err),
+		})
+	}
+
+	result, err := h.svc.LoginWithGoogle(c.Request().Context(), req.IDToken)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidIDToken):
+			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "INVALID_TOKEN", Message: "Google IDトークンが無効です"})
+		case errors.Is(err, service.ErrAccountSuspended):
+			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "ACCOUNT_SUSPENDED", Message: "このアカウントは停止されています"})
+		default:
+			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "サーバーエラーが発生しました"})
+		}
+	}
+
+	setRefreshTokenCookie(c, result.RefreshToken)
+
+	return c.JSON(http.StatusOK, dto.AuthResponse{
+		AccessToken: result.AccessToken,
+		User:        result.User,
+	})
 }
 
 func setRefreshTokenCookie(c echo.Context, token string) {

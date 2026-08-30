@@ -21,8 +21,14 @@ export const PostEditDialog = ({ post, open, onClose }: PostEditDialogProps) => 
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" onClick={(e) => e.stopPropagation()}>
-      <DialogTitle>投稿を編集</DialogTitle>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="sm"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <DialogTitle data-testid="post-edit-dialog">投稿を編集</DialogTitle>
       <DialogContent>
         <TextField
           autoFocus
@@ -32,6 +38,7 @@ export const PostEditDialog = ({ post, open, onClose }: PostEditDialogProps) => 
           value={content}
           onChange={(e) => setContent(e.target.value.slice(0, MAX_LENGTH))}
           helperText={`${content.length} / ${MAX_LENGTH}`}
+          slotProps={{ htmlInput: { 'data-testid': 'post-edit-input' } }}
         />
         {error && (
           <Typography color="error" variant="body2" sx={{ mt: 1 }}>
@@ -41,7 +48,12 @@ export const PostEditDialog = ({ post, open, onClose }: PostEditDialogProps) => 
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>キャンセル</Button>
-        <Button onClick={handleSave} variant="contained" disabled={content.trim().length === 0 || isPending}>
+        <Button
+          onClick={handleSave}
+          variant="contained"
+          disabled={content.trim().length === 0 || isPending}
+          data-testid="post-edit-save"
+        >
           保存
         </Button>
       </DialogActions>

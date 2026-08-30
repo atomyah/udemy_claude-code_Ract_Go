@@ -10,14 +10,20 @@ import (
 )
 
 func NewDB(cfg *Config) *gorm.DB {
+	// SQLログは開発環境のみ全件出力する（テスト・本番では警告以上に絞る）
+	logLevel := logger.Warn
+	if cfg.IsDevelopment() {
+		logLevel = logger.Info
+	}
+
 	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(logLevel),
 	})
 	if err != nil {
 		log.Fatalf("データベース接続失敗: %v", err)
 	}
 
-	if cfg.IsDevelopment() {
+	if cfg.ShouldAutoMigrate() {
 		if err = db.AutoMigrate(
 			&model.User{},
 			&model.Post{},

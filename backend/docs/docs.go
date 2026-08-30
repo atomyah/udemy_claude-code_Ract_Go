@@ -78,6 +78,65 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/users": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "全ユーザーをカーソルページネーションで取得する（メールアドレス・停止状態を含む）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "ユーザー一覧取得（管理者専用）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ページネーションカーソル",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 50,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "取得件数（デフォルト20、最大50）",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "取得成功",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.AdminUserListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "未認証",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "管理者権限が必要",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "サーバーエラー",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/users/{id}/suspend": {
             "put": {
                 "security": [
@@ -652,7 +711,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "フォロー中ユーザー＋自分の投稿を新着順（カーソルページネーション）で取得する",
+                "description": "全ユーザーの投稿を新着順（カーソルページネーション）で取得する（探索タイムラインと同一の内容、要認証）",
                 "produces": [
                     "application/json"
                 ],
@@ -1220,6 +1279,9 @@ const docTemplate = `{
                     }
                 ],
                 "description": "指定投稿をリポストする。postsテーブルにrepost_of付きで保存され、投稿者に通知が届く",
+                "consumes": [
+                    "multipart/form-data"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1235,6 +1297,12 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "引用コメント（最大280文字）",
+                        "name": "content",
+                        "in": "formData"
                     }
                 ],
                 "responses": {
@@ -1690,6 +1758,126 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/me/email": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "現在のパスワードを確認した上でメールアドレスを変更する",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "メールアドレス変更",
+                "parameters": [
+                    {
+                        "description": "変更内容",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ChangeEmailRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "変更成功",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "バリデーションエラー",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "未認証またはパスワード不一致",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "メールアドレスが既に使用されています",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "サーバーエラー",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/me/password": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "現在のパスワードを確認した上で新しいパスワードに変更する",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "パスワード変更",
+                "parameters": [
+                    {
+                        "description": "変更内容",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ChangePasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "変更成功",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "バリデーションエラー",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "未認証またはパスワード不一致",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "サーバーエラー",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/users/me/theme": {
             "put": {
                 "security": [
@@ -2016,7 +2204,7 @@ const docTemplate = `{
         },
         "/users/{handle}/posts": {
             "get": {
-                "description": "指定ユーザーの投稿をカーソルページネーションで取得する（削除済み・停止ユーザーは除外）",
+                "description": "指定ユーザーの投稿（返信を除く）をカーソルページネーションで取得する（削除済み・停止ユーザーは除外）",
                 "produces": [
                     "application/json"
                 ],
@@ -2069,9 +2257,117 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/users/{handle}/replies": {
+            "get": {
+                "description": "指定ユーザーが他の投稿に行った返信をカーソルページネーションで取得する（削除済み・停止ユーザーは除外）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "ユーザーの返信一覧取得",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "john_doe",
+                        "description": "ユーザーハンドル（@なし）",
+                        "name": "handle",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ページネーションカーソル（前回レスポンスのnext_cursor）",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 50,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "取得件数（デフォルト20、最大50）",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "取得成功",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.PostListResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "ユーザーが見つからない",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "サーバーエラー",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "github_com_atyahara_sns-backend_internal_dto.AdminUserListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.AdminUserResponse"
+                    }
+                },
+                "has_more": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "next_cursor": {
+                    "type": "string",
+                    "example": "2024-01-01T00:00:00Z"
+                }
+            }
+        },
+        "github_com_atyahara_sns-backend_internal_dto.AdminUserResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string",
+                    "example": "2024-01-01T00:00:00Z"
+                },
+                "display_name": {
+                    "type": "string",
+                    "example": "John Doe"
+                },
+                "email": {
+                    "type": "string",
+                    "example": "user@example.com"
+                },
+                "handle": {
+                    "type": "string",
+                    "example": "john_doe"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                },
+                "is_suspended": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "role": {
+                    "type": "string",
+                    "example": "user"
+                }
+            }
+        },
         "github_com_atyahara_sns-backend_internal_dto.AuthResponse": {
             "type": "object",
             "properties": {
@@ -2099,6 +2395,42 @@ const docTemplate = `{
                 "banner_url": {
                     "type": "string",
                     "example": "https://storage.googleapis.com/bucket/banner.jpg"
+                }
+            }
+        },
+        "github_com_atyahara_sns-backend_internal_dto.ChangeEmailRequest": {
+            "type": "object",
+            "required": [
+                "current_password",
+                "new_email"
+            ],
+            "properties": {
+                "current_password": {
+                    "type": "string",
+                    "example": "password123"
+                },
+                "new_email": {
+                    "type": "string",
+                    "example": "new@example.com"
+                }
+            }
+        },
+        "github_com_atyahara_sns-backend_internal_dto.ChangePasswordRequest": {
+            "type": "object",
+            "required": [
+                "current_password",
+                "new_password"
+            ],
+            "properties": {
+                "current_password": {
+                    "type": "string",
+                    "example": "password123"
+                },
+                "new_password": {
+                    "type": "string",
+                    "maxLength": 72,
+                    "minLength": 8,
+                    "example": "newpassword123"
                 }
             }
         },
@@ -2299,6 +2631,9 @@ const docTemplate = `{
                 "reply_to": {
                     "type": "string",
                     "example": "550e8400-e29b-41d4-a716-446655440004"
+                },
+                "reply_to_user": {
+                    "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.UserInPost"
                 },
                 "repost_of": {
                     "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.PostSummary"
@@ -2533,6 +2868,10 @@ const docTemplate = `{
                 "display_name": {
                     "type": "string",
                     "example": "John Doe"
+                },
+                "email": {
+                    "type": "string",
+                    "example": "user@example.com"
                 },
                 "followers_count": {
                     "type": "integer",

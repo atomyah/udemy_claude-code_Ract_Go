@@ -15,7 +15,13 @@ export const UserListItem = ({ user, onNavigate }: UserListItemProps) => {
   const isSelf = currentUser?.id !== undefined && currentUser.id === user.id;
 
   return (
-    <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', px: 2, py: 1.5 }}>
+    <Stack
+      direction="row"
+      spacing={1.5}
+      data-testid="user-list-item"
+      data-handle={user.handle ?? ''}
+      sx={{ alignItems: 'center', px: 2, py: 1.5 }}
+    >
       <Avatar
         component={RouterLink}
         to={`/${user.handle ?? ''}`}

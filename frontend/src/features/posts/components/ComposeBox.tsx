@@ -23,6 +23,8 @@ interface ComposeBoxProps {
   /** 返信欄など、一覧に埋め込む用途で余白を詰めて表示する */
   compact?: boolean;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
+  /** E2Eテスト用のdata-testid接頭辞（例: post-form → post-form-input / post-form-submit） */
+  testIdPrefix?: string;
 }
 
 export const ComposeBox = ({
@@ -33,6 +35,7 @@ export const ComposeBox = ({
   onSubmit,
   compact = false,
   inputRef,
+  testIdPrefix = 'compose',
 }: ComposeBoxProps) => {
   const { currentUser } = useAuth();
   const [content, setContent] = useState('');
@@ -94,7 +97,10 @@ export const ComposeBox = ({
   };
 
   return (
-    <Box sx={{ px: 2, py: compact ? 1 : 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+    <Box
+      data-testid={testIdPrefix}
+      sx={{ px: 2, py: compact ? 1 : 2, borderBottom: '1px solid', borderColor: 'divider' }}
+    >
       <Stack direction="row" spacing={compact ? 1 : 1.5}>
         <Avatar
           src={currentUser?.avatar_url ?? undefined}
@@ -112,7 +118,10 @@ export const ComposeBox = ({
             onChange={(e) => setContent(e.target.value.slice(0, MAX_LENGTH))}
             variant="standard"
             inputRef={inputRef}
-            slotProps={{ input: { disableUnderline: true } }}
+            slotProps={{
+              input: { disableUnderline: true },
+              htmlInput: { 'data-testid': `${testIdPrefix}-input` },
+            }}
           />
 
           {files.length > 0 && (
@@ -148,7 +157,7 @@ export const ComposeBox = ({
           {isPending && <LinearProgress sx={{ mt: 1 }} />}
 
           {Boolean(fileError || error) && (
-            <Typography color="error" variant="body2" sx={{ mt: 1 }}>
+            <Typography color="error" variant="body2" sx={{ mt: 1 }} data-testid={`${testIdPrefix}-error`}>
               {fileError ?? getApiErrorMessage(error, '送信に失敗しました')}
             </Typography>
           )}
@@ -190,6 +199,7 @@ export const ComposeBox = ({
                 size={compact ? 'small' : 'medium'}
                 disabled={!canSubmit}
                 onClick={handleSubmit}
+                data-testid={`${testIdPrefix}-submit`}
               >
                 {submitLabel}
               </Button>

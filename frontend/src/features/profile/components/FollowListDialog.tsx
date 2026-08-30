@@ -38,13 +38,18 @@ export const FollowListDialog = ({ handle, mode, open, onClose }: FollowListDial
   const users = active.data?.pages.flatMap((page) => page.data ?? []) ?? [];
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="xs"
+    >
       <AppBar position="static" color="default" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Toolbar>
           <IconButton edge="start" onClick={onClose} aria-label="閉じる">
             <CloseIcon />
           </IconButton>
-          <Typography variant="h6" sx={{ ml: 1 }}>
+          <Typography variant="h6" data-testid="follow-list-dialog" sx={{ ml: 1 }}>
             {mode === 'followers' ? 'フォロワー' : 'フォロー中'}
           </Typography>
         </Toolbar>
@@ -55,7 +60,7 @@ export const FollowListDialog = ({ handle, mode, open, onClose }: FollowListDial
             <CircularProgress size={28} />
           </Box>
         ) : users.length === 0 ? (
-          <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center' }}>
+          <Typography color="text.secondary" data-testid="follow-list-empty" sx={{ p: 3, textAlign: 'center' }}>
             {mode === 'followers' ? 'フォロワーはいません' : 'フォロー中のユーザーはいません'}
           </Typography>
         ) : (

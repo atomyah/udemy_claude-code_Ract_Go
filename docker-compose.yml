@@ -1,4 +1,7 @@
 services:
+  # ============================================================
+  # 開発環境
+  # ============================================================
   db:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -32,6 +35,69 @@ services:
       db:
         condition: service_healthy
 
+  adminer:
+    image: adminer:4-standalone
+    restart: unless-stopped
+    ports:
+      # 8081 はテスト用APIサーバー（api_test）が使うため 8082 に変更
+      - "8082:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ============================================================
+  # テスト環境（profile: test）
+  # `docker compose --profile test up -d` でのみ起動する。
+  # 開発環境とはDB・ポート・ボリュームがすべて分離されており、
+  # 開発用の db / api コンテナのデータには一切影響しない。
+  # ============================================================
+  db_test:
+    profiles: ["test"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sns_test_db
+      POSTGRES_USER: sns_test_user
+      POSTGRES_PASSWORD: sns_test_password
+    ports:
+      - "5433:5432"
+    # データはtmpfs（メモリ）に置き永続化しない。開発用ボリュームには触れない
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sns_test_user -d sns_test_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api_test:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    env_file:
+      - ./backend/.env.test
+    volumes:
+      - ./backend:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache-test:/root/.cache/go-build
+    ports:
+      - "8081:8080"
+    depends_on:
+      db_test:
+        condition: service_healthy
+    # 起動時（go test 実行時も含む）に必ずマイグレーションを走らせる
+    entrypoint: ["sh", "/app/scripts/test-entrypoint.sh"]
+    # E2Eテスト用のAPIサーバー。ビルド済みバイナリを実行する（go run は使わない）
+    command: ["sh", "-c", "go build -o /tmp/api_test_server ./cmd/server && exec /tmp/api_test_server"]
+    # make test-setup の `--wait` が起動完了を待てるようヘルスチェックを定義する
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
 volumes:
   postgres_data:
   go-mod-cache:
+  go-build-cache-test:

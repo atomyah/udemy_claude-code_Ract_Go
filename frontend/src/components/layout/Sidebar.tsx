@@ -67,6 +67,7 @@ export const Sidebar = () => {
             key={item.label}
             component={NavLink}
             to={item.to}
+            data-testid={`sidebar-nav-${item.label}`}
             sx={{
               '&.active': {
                 bgcolor: 'action.selected',
@@ -98,7 +99,7 @@ export const Sidebar = () => {
       <Box sx={{ mt: 'auto', p: 2 }}>
         <Divider sx={{ mb: 2 }} />
         {isAuthenticated ? (
-          <Button fullWidth variant="outlined" onClick={() => logout()}>
+          <Button fullWidth variant="outlined" data-testid="logout-button" onClick={() => logout()}>
             ログアウト
           </Button>
         ) : (

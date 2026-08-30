@@ -1,18 +1,24 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/atyahara/sns-backend/internal/dto"
+	"github.com/atyahara/sns-backend/internal/repository"
+	"github.com/atyahara/sns-backend/internal/service"
+	"github.com/atyahara/sns-backend/internal/utils"
 	"github.com/labstack/echo/v4"
 )
 
 // SearchHandler は検索関連のHTTPハンドラー
-type SearchHandler struct{}
+type SearchHandler struct {
+	searchSvc service.SearchService
+}
 
 // NewSearchHandler はSearchHandlerを生成する
-func NewSearchHandler() *SearchHandler {
-	return &SearchHandler{}
+func NewSearchHandler(searchSvc service.SearchService) *SearchHandler {
+	return &SearchHandler{searchSvc: searchSvc}
 }
 
 // SearchUsers godoc
@@ -28,7 +34,19 @@ func NewSearchHandler() *SearchHandler {
 // @Failure      500     {object} dto.ErrorResponse     "サーバーエラー"
 // @Router       /search/users [get]
 func (h *SearchHandler) SearchUsers(c echo.Context) error {
-	return c.JSON(http.StatusNotImplemented, dto.ErrorResponse{Code: "NOT_IMPLEMENTED", Message: "実装予定"})
+	q := c.QueryParam("q")
+	if len(q) < 2 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: "VALIDATION_ERROR", Message: "検索クエリは2文字以上で指定してください"})
+	}
+	cursor := c.QueryParam("cursor")
+	limit := utils.ParseLimit(c.QueryParam("limit"), defaultListLimit, maxListLimit)
+
+	resp, err := h.searchSvc.SearchUsers(c.Request().Context(), q, optionalUserID(c), cursor, limit)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "検索に失敗しました"})
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }
 
 // SearchPosts godoc
@@ -44,7 +62,19 @@ func (h *SearchHandler) SearchUsers(c echo.Context) error {
 // @Failure      500     {object} dto.ErrorResponse     "サーバーエラー"
 // @Router       /search/posts [get]
 func (h *SearchHandler) SearchPosts(c echo.Context) error {
-	return c.JSON(http.StatusNotImplemented, dto.ErrorResponse{Code: "NOT_IMPLEMENTED", Message: "実装予定"})
+	q := c.QueryParam("q")
+	if q == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: "VALIDATION_ERROR", Message: "検索クエリを指定してください"})
+	}
+	cursor := c.QueryParam("cursor")
+	limit := utils.ParseLimit(c.QueryParam("limit"), defaultListLimit, maxListLimit)
+
+	resp, err := h.searchSvc.SearchPosts(c.Request().Context(), q, optionalUserID(c), cursor, limit)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "検索に失敗しました"})
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }
 
 // GetHashtagPosts godoc
@@ -60,5 +90,17 @@ func (h *SearchHandler) SearchPosts(c echo.Context) error {
 // @Failure      500     {object} dto.ErrorResponse     "サーバーエラー"
 // @Router       /search/hashtags/{tag} [get]
 func (h *SearchHandler) GetHashtagPosts(c echo.Context) error {
-	return c.JSON(http.StatusNotImplemented, dto.ErrorResponse{Code: "NOT_IMPLEMENTED", Message: "実装予定"})
+	tag := c.Param("tag")
+	cursor := c.QueryParam("cursor")
+	limit := utils.ParseLimit(c.QueryParam("limit"), defaultListLimit, maxListLimit)
+
+	resp, err := h.searchSvc.GetPostsByHashtag(c.Request().Context(), tag, optionalUserID(c), cursor, limit)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "HASHTAG_NOT_FOUND", Message: "ハッシュタグが見つかりません"})
+		}
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }

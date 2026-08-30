@@ -58,7 +58,10 @@ const LoginPage = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', p: 2 }}>
+    <Box
+      data-testid="login-page"
+      sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', p: 2 }}
+    >
       <Card sx={{ width: '100%', maxWidth: 400 }}>
         <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
@@ -66,7 +69,7 @@ const LoginPage = () => {
           </Typography>
 
           {error && (
-            <Alert severity="error">
+            <Alert severity="error" data-testid="login-error">
               {getApiErrorMessage(error, 'メールアドレスまたはパスワードが正しくありません')}
             </Alert>
           )}
@@ -85,6 +88,7 @@ const LoginPage = () => {
               autoComplete="email"
               error={!!errors.email}
               helperText={errors.email?.message}
+              slotProps={{ htmlInput: { 'data-testid': 'login-email' } }}
               {...register('email', {
                 required: 'メールアドレスを入力してください',
                 pattern: {
@@ -100,6 +104,7 @@ const LoginPage = () => {
               error={!!errors.password}
               helperText={errors.password?.message}
               slotProps={{
+                htmlInput: { 'data-testid': 'login-password' },
                 input: {
                   endAdornment: (
                     <IconButton
@@ -114,7 +119,7 @@ const LoginPage = () => {
               }}
               {...register('password', { required: 'パスワードを入力してください' })}
             />
-            <Button type="submit" variant="contained" size="large" disabled={isPending}>
+            <Button type="submit" variant="contained" size="large" disabled={isPending} data-testid="login-submit">
               {isPending ? <CircularProgress size={24} color="inherit" /> : 'ログイン'}
             </Button>
           </Box>
@@ -132,7 +137,10 @@ const LoginPage = () => {
           </Button>
 
           <Typography variant="body2" sx={{ textAlign: 'center' }}>
-            アカウントをお持ちでない方は <Link component={RouterLink} to="/signup">新規登録</Link>
+            アカウントをお持ちでない方は{' '}
+            <Link component={RouterLink} to="/signup" data-testid="go-to-signup">
+              新規登録
+            </Link>
           </Typography>
         </CardContent>
       </Card>

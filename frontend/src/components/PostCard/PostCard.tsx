@@ -99,6 +99,8 @@ export const PostCard = ({ post, onCommentClick }: PostCardProps) => {
     <Card
       variant="outlined"
       onClick={goToDetail}
+      data-testid="post-card"
+      data-post-id={postId}
       sx={{ borderRadius: 0, borderLeft: 0, borderRight: 0, borderTop: 0, cursor: 'pointer' }}
     >
       <CardContent>
@@ -141,6 +143,7 @@ export const PostCard = ({ post, onCommentClick }: PostCardProps) => {
               <IconButton
                 size="small"
                 aria-label="その他のオプション"
+                data-testid="post-menu-button"
                 onClick={(e) => stop(e, () => setMenuAnchor(e.currentTarget))}
               >
                 <MoreHorizIcon fontSize="small" />
@@ -163,7 +166,11 @@ export const PostCard = ({ post, onCommentClick }: PostCardProps) => {
             )}
 
             {(post.content ?? '').length > 0 && (
-              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', mt: 0.5 }}>
+              <Typography
+                variant="body1"
+                data-testid="post-content"
+                sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', mt: 0.5 }}
+              >
                 <LinkifiedText text={post.content ?? ''} />
               </Typography>
             )}
@@ -180,6 +187,7 @@ export const PostCard = ({ post, onCommentClick }: PostCardProps) => {
                 icon={<ChatBubbleOutlineIcon fontSize="small" />}
                 count={post.comments_count ?? 0}
                 label="コメント"
+                testIdPrefix="post-comment"
                 onClick={onCommentClick ?? goToDetail}
               />
               <ActionButton
@@ -187,6 +195,7 @@ export const PostCard = ({ post, onCommentClick }: PostCardProps) => {
                 count={post.reposts_count ?? 0}
                 active={post.is_reposted}
                 label="リポスト"
+                testIdPrefix="post-repost"
                 onClick={(e) =>
                   post.is_reposted
                     ? repostMutation.mutate({ isReposted: true })
@@ -198,11 +207,13 @@ export const PostCard = ({ post, onCommentClick }: PostCardProps) => {
                 count={post.likes_count ?? 0}
                 active={post.is_liked}
                 label="いいね"
+                testIdPrefix="post-like"
                 onClick={() => likeMutation.mutate(post.is_liked ?? false)}
               />
               <IconButton
                 size="small"
                 aria-label="ブックマーク"
+                data-testid="post-bookmark-button"
                 color={post.is_bookmarked ? 'primary' : 'default'}
                 onClick={() => bookmarkMutation.mutate(post.is_bookmarked ?? false)}
               >
@@ -232,6 +243,7 @@ export const PostCard = ({ post, onCommentClick }: PostCardProps) => {
           ? [
               <MenuItem
                 key="edit"
+                data-testid="post-menu-edit"
                 onClick={(e) =>
                   stop(e, () => {
                     setEditOpen(true);
@@ -243,6 +255,7 @@ export const PostCard = ({ post, onCommentClick }: PostCardProps) => {
               </MenuItem>,
               <MenuItem
                 key="delete"
+                data-testid="post-menu-delete"
                 onClick={(e) =>
                   stop(e, () => {
                     deletePostMutation.mutate(postId);

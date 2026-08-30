@@ -35,8 +35,10 @@ const PostDetailPage = () => {
   }
 
   return (
-    <Box>
-      <PostCard post={post} onCommentClick={focusCommentInput} />
+    <Box data-testid="post-detail-page">
+      <Box data-testid="post-detail-main">
+        <PostCard post={post} onCommentClick={focusCommentInput} />
+      </Box>
 
       {isAuthenticated && <CommentForm postId={post.id ?? ''} inputRef={commentInputRef} />}
 
@@ -49,15 +51,17 @@ const PostDetailPage = () => {
         </Typography>
       </Stack>
 
-      <InfinitePostList
-        data={comments.data}
-        isLoading={comments.isLoading}
-        isError={comments.isError}
-        isFetchingNextPage={comments.isFetchingNextPage}
-        hasNextPage={comments.hasNextPage}
-        fetchNextPage={comments.fetchNextPage}
-        emptyMessage="まだコメントはありません"
-      />
+      <Box data-testid="comment-list">
+        <InfinitePostList
+          data={comments.data}
+          isLoading={comments.isLoading}
+          isError={comments.isError}
+          isFetchingNextPage={comments.isFetchingNextPage}
+          hasNextPage={comments.hasNextPage}
+          fetchNextPage={comments.fetchNextPage}
+          emptyMessage="まだコメントはありません"
+        />
+      </Box>
     </Box>
   );
 };

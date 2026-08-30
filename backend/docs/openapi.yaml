@@ -1,0 +1,2412 @@
+openapi: 3.0.0
+info:
+  description: Twitter ライクな SNS アプリの REST
+    API。テキスト・画像・動画を投稿し、いいね・コメント・リポスト・ブックマークでインタラクションできる。
+  title: SNS API
+  termsOfService: http://swagger.io/terms/
+  contact:
+    name: API Support
+    email: atyahara@gmail.com
+  license:
+    name: MIT
+  version: "1.0"
+paths:
+  "/admin/posts/{id}":
+    delete:
+      security:
+        - BearerAuth: []
+      description: 管理者が任意のユーザーの投稿を強制削除する（論理削除）
+      tags:
+        - admin
+      summary: 投稿の強制削除（管理者専用）
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440003
+          description: 削除対象の投稿ID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: 削除成功
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "403":
+          description: 管理者権限が必要
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: 投稿が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /admin/users:
+    get:
+      security:
+        - BearerAuth: []
+      description: 全ユーザーをカーソルページネーションで取得する（メールアドレス・停止状態を含む）
+      tags:
+        - admin
+      summary: ユーザー一覧取得（管理者専用）
+      parameters:
+        - description: ページネーションカーソル
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.AdminU\
+                  serListResponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "403":
+          description: 管理者権限が必要
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/admin/users/{id}/suspend":
+    put:
+      security:
+        - BearerAuth: []
+      description: 管理者が指定ユーザーのアカウントを停止する（is_suspended=true）。停止後はログイン不可
+      tags:
+        - admin
+      summary: ユーザーアカウント停止（管理者専用）
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440000
+          description: 停止対象のユーザーID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: 停止成功
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "403":
+          description: 管理者権限が必要
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: ユーザーが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+    delete:
+      security:
+        - BearerAuth: []
+      description: 管理者が停止中のユーザーアカウントを復活させる（is_suspended=false）
+      tags:
+        - admin
+      summary: ユーザーアカウント停止解除（管理者専用）
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440000
+          description: 停止解除対象のユーザーID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: 停止解除成功
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "403":
+          description: 管理者権限が必要
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: ユーザーが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /auth/google:
+    post:
+      description: Firebase AuthのIDトークンを検証し、初回は自動登録、JWTを返す
+      tags:
+        - auth
+      summary: Google OAuthログイン
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Google\
+                LoginRequest"
+        description: Firebase ID Token
+        required: true
+      responses:
+        "200":
+          description: ログイン/登録成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.AuthRe\
+                  sponse"
+        "400":
+          description: バリデーションエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "401":
+          description: IDトークンが無効
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /auth/login:
+    post:
+      description: メールアドレスとパスワードで認証し、Access Token（レスポンスボディ）とRefresh Token（HttpOnly
+        Cookie）を返す
+      tags:
+        - auth
+      summary: ログイン
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.LoginR\
+                equest"
+        description: ログイン情報
+        required: true
+      responses:
+        "200":
+          description: ログイン成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.AuthRe\
+                  sponse"
+        "400":
+          description: バリデーションエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "401":
+          description: メールアドレスまたはパスワードが不正
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /auth/logout:
+    post:
+      security:
+        - BearerAuth: []
+      description: Refresh Token Cookie を削除する
+      tags:
+        - auth
+      summary: ログアウト
+      responses:
+        "204":
+          description: ログアウト成功
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /auth/refresh:
+    post:
+      description: HttpOnly Cookie に保存されたRefresh Tokenを使いAccess Tokenを再発行する
+      tags:
+        - auth
+      summary: アクセストークンの更新
+      responses:
+        "200":
+          description: 再発行成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Refres\
+                  hResponse"
+        "401":
+          description: Refresh Tokenが無効または期限切れ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /auth/register:
+    post:
+      description: メールアドレス・パスワード・ハンドル・表示名でユーザーを作成し、JWTを返す
+      tags:
+        - auth
+      summary: 新規ユーザー登録
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Regist\
+                erRequest"
+        description: 登録情報
+        required: true
+      responses:
+        "201":
+          description: 登録成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.AuthRe\
+                  sponse"
+        "400":
+          description: バリデーションエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "409":
+          description: メールアドレスまたはハンドルが既に使用されています
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /bookmarks:
+    get:
+      security:
+        - BearerAuth: []
+      description: 自分のブックマーク済み投稿をカーソルページネーションで取得する
+      tags:
+        - interactions
+      summary: ブックマーク一覧取得
+      parameters:
+        - description: ページネーションカーソル
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostLi\
+                  stResponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /notifications:
+    get:
+      security:
+        - BearerAuth: []
+      description: 自分宛の通知をカーソルページネーションで取得する。未読数も返す
+      tags:
+        - notifications
+      summary: 通知一覧取得
+      parameters:
+        - description: ページネーションカーソル
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Notifi\
+                  cationListResponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /notifications/read:
+    put:
+      security:
+        - BearerAuth: []
+      description: 自分の未読通知を全て既読（is_read=true）にする
+      tags:
+        - notifications
+      summary: 全通知を既読にする
+      responses:
+        "204":
+          description: 既読処理成功
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /posts:
+    get:
+      description: 全ユーザーの公開投稿を新着順（カーソルページネーション）で取得する。停止ユーザー・削除済み投稿は除外
+      tags:
+        - posts
+      summary: 探索タイムライン取得
+      parameters:
+        - description: ページネーションカーソル（前回レスポンスのnext_cursor）
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostLi\
+                  stResponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+    post:
+      security:
+        - BearerAuth: []
+      description: テキスト必須（最大280文字）、画像最大4枚、動画最大1本を投稿する。ハッシュタグ・メンションは自動解析される
+      tags:
+        - posts
+      summary: 投稿作成
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                content:
+                  description: 投稿本文（最大280文字）
+                  type: string
+                media:
+                  description: メディアファイル（画像JPEG/PNG/WebP最大4枚各5MB、動画MP4/MOV最大1本100MB）
+                  type: string
+                  format: binary
+              required:
+                - content
+        required: true
+      responses:
+        "201":
+          description: 投稿成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostRe\
+                  sponse"
+        "400":
+          description: バリデーションエラー（文字数超過・ファイル形式不正など）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /posts/home:
+    get:
+      security:
+        - BearerAuth: []
+      description: 全ユーザーの投稿を新着順（カーソルページネーション）で取得する（探索タイムラインと同一の内容、要認証）
+      tags:
+        - posts
+      summary: ホームタイムライン取得
+      parameters:
+        - description: ページネーションカーソル（前回レスポンスのnext_cursor）
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostLi\
+                  stResponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/posts/{id}":
+    get:
+      description: 指定IDの投稿を取得する。ログイン済みの場合はis_liked等の個人情報も含む
+      tags:
+        - posts
+      summary: 投稿詳細取得
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440003
+          description: 投稿ID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostRe\
+                  sponse"
+        "404":
+          description: 投稿が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+    put:
+      security:
+        - BearerAuth: []
+      description: 自分の投稿の本文を編集する。編集後はis_editedフラグがtrueになる
+      tags:
+        - posts
+      summary: 投稿編集
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440003
+          description: 投稿ID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Update\
+                PostRequest"
+        description: 編集内容
+        required: true
+      responses:
+        "200":
+          description: 編集成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostRe\
+                  sponse"
+        "400":
+          description: バリデーションエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "403":
+          description: 自分の投稿以外は編集不可
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: 投稿が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+    delete:
+      security:
+        - BearerAuth: []
+      description: 自分の投稿を論理削除する（is_deleted=true）
+      tags:
+        - posts
+      summary: 投稿削除
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440003
+          description: 投稿ID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: 削除成功
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "403":
+          description: 自分の投稿以外は削除不可
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: 投稿が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/posts/{id}/bookmark":
+    post:
+      security:
+        - BearerAuth: []
+      description: 指定投稿をブックマークに保存する（自分だけに見える）
+      tags:
+        - interactions
+      summary: ブックマーク追加
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440003
+          description: 投稿ID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ブックマーク成功
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: 投稿が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "409":
+          description: 既にブックマーク済み
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+    delete:
+      security:
+        - BearerAuth: []
+      description: 指定投稿のブックマークを解除する
+      tags:
+        - interactions
+      summary: ブックマーク解除
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440003
+          description: 投稿ID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ブックマーク解除成功
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: 投稿が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/posts/{id}/comments":
+    get:
+      description: 指定投稿へのコメントをカーソルページネーションで取得する
+      tags:
+        - posts
+      summary: コメント（返信）一覧取得
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440003
+          description: 投稿ID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - description: ページネーションカーソル
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostLi\
+                  stResponse"
+        "404":
+          description: 投稿が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+    post:
+      security:
+        - BearerAuth: []
+      description: 指定投稿にコメントを投稿する。コメントはpostsテーブルにreply_to付きで保存され、投稿者に通知が届く
+      tags:
+        - posts
+      summary: コメント（返信）投稿
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440003
+          description: コメント先の投稿ID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                content:
+                  description: コメント本文（最大280文字）
+                  type: string
+                media:
+                  description: メディアファイル（画像最大4枚 or 動画1本）
+                  type: string
+                  format: binary
+              required:
+                - content
+        required: true
+      responses:
+        "201":
+          description: コメント投稿成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostRe\
+                  sponse"
+        "400":
+          description: バリデーションエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: コメント先の投稿が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/posts/{id}/like":
+    post:
+      security:
+        - BearerAuth: []
+      description: 指定投稿にいいねする。自分の投稿以外の場合は投稿者に通知が届く
+      tags:
+        - interactions
+      summary: いいね
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440003
+          description: 投稿ID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: いいね成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.LikeRe\
+                  sponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: 投稿が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "409":
+          description: 既にいいね済み
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+    delete:
+      security:
+        - BearerAuth: []
+      description: 指定投稿のいいねを取り消す
+      tags:
+        - interactions
+      summary: いいね取消
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440003
+          description: 投稿ID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: いいね取消成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.LikeRe\
+                  sponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: 投稿が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/posts/{id}/repost":
+    post:
+      security:
+        - BearerAuth: []
+      description: 指定投稿をリポストする。postsテーブルにrepost_of付きで保存され、投稿者に通知が届く
+      tags:
+        - interactions
+      summary: リポスト
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440003
+          description: 投稿ID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                content:
+                  description: 引用コメント（最大280文字）
+                  type: string
+      responses:
+        "200":
+          description: リポスト成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Repost\
+                  Response"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: 投稿が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "409":
+          description: 既にリポスト済み
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+    delete:
+      security:
+        - BearerAuth: []
+      description: 自分のリポストを論理削除する
+      tags:
+        - interactions
+      summary: リポスト取消
+      parameters:
+        - example: 550e8400-e29b-41d4-a716-446655440003
+          description: 元投稿ID（UUID）
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: リポスト取消成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Repost\
+                  Response"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: 投稿が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/search/hashtags/{tag}":
+    get:
+      description: 指定ハッシュタグ（#なし）が付いた投稿をカーソルページネーションで取得する
+      tags:
+        - search
+      summary: ハッシュタグ投稿一覧取得
+      parameters:
+        - example: golang
+          description: ハッシュタグ（#なし）
+          name: tag
+          in: path
+          required: true
+          schema:
+            type: string
+        - description: ページネーションカーソル
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostLi\
+                  stResponse"
+        "404":
+          description: ハッシュタグが存在しない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /search/posts:
+    get:
+      description: 投稿のテキスト本文でキーワード検索する（削除済み・停止ユーザーの投稿は除外）
+      tags:
+        - search
+      summary: 投稿内容検索
+      parameters:
+        - description: 検索クエリ
+          name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - description: ページネーションカーソル
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 検索結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostLi\
+                  stResponse"
+        "400":
+          description: クエリが必要
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /search/users:
+    get:
+      description: 表示名・ハンドルで部分一致検索する（停止ユーザーは除外）
+      tags:
+        - search
+      summary: ユーザー検索
+      parameters:
+        - description: 検索クエリ（2文字以上）
+          name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - description: ページネーションカーソル
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 検索結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.UserLi\
+                  stResponse"
+        "400":
+          description: クエリが短すぎる
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /users/me:
+    get:
+      security:
+        - BearerAuth: []
+      description: JWTから取得したユーザーID自身のプロフィールを返す
+      tags:
+        - users
+      summary: 自分のプロフィール取得
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.UserRe\
+                  sponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+    put:
+      security:
+        - BearerAuth: []
+      description: 表示名・bio・場所・ウェブサイトURL・誕生日を更新する
+      tags:
+        - users
+      summary: 自分のプロフィール更新
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Update\
+                ProfileRequest"
+        description: 更新内容
+        required: true
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.UserRe\
+                  sponse"
+        "400":
+          description: バリデーションエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /users/me/avatar:
+    put:
+      security:
+        - BearerAuth: []
+      description: アバター画像をFirebase Storageにアップロードし、URLをDBに保存する
+      tags:
+        - users
+      summary: アバター画像更新
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  description: アバター画像（JPEG/PNG/WebP、最大5MB）
+                  type: string
+                  format: binary
+              required:
+                - avatar
+        required: true
+      responses:
+        "200":
+          description: アップロード成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Avatar\
+                  Response"
+        "400":
+          description: ファイル形式またはサイズが不正
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /users/me/banner:
+    put:
+      security:
+        - BearerAuth: []
+      description: バナー画像をFirebase Storageにアップロードし、URLをDBに保存する
+      tags:
+        - users
+      summary: バナー画像更新
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                banner:
+                  description: バナー画像（JPEG/PNG/WebP、最大5MB）
+                  type: string
+                  format: binary
+              required:
+                - banner
+        required: true
+      responses:
+        "200":
+          description: アップロード成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Banner\
+                  Response"
+        "400":
+          description: ファイル形式またはサイズが不正
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /users/me/email:
+    put:
+      security:
+        - BearerAuth: []
+      description: 現在のパスワードを確認した上でメールアドレスを変更する
+      tags:
+        - users
+      summary: メールアドレス変更
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Change\
+                EmailRequest"
+        description: 変更内容
+        required: true
+      responses:
+        "200":
+          description: 変更成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Succes\
+                  sResponse"
+        "400":
+          description: バリデーションエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "401":
+          description: 未認証またはパスワード不一致
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "409":
+          description: メールアドレスが既に使用されています
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /users/me/password:
+    put:
+      security:
+        - BearerAuth: []
+      description: 現在のパスワードを確認した上で新しいパスワードに変更する
+      tags:
+        - users
+      summary: パスワード変更
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Change\
+                PasswordRequest"
+        description: 変更内容
+        required: true
+      responses:
+        "200":
+          description: 変更成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Succes\
+                  sResponse"
+        "400":
+          description: バリデーションエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "401":
+          description: 未認証またはパスワード不一致
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  /users/me/theme:
+    put:
+      security:
+        - BearerAuth: []
+      description: ユーザーのテーマ設定（light/dark）を保存する
+      tags:
+        - users
+      summary: テーマ設定更新
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Update\
+                ThemeRequest"
+        description: テーマ設定
+        required: true
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Succes\
+                  sResponse"
+        "400":
+          description: バリデーションエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/users/{handle}":
+    get:
+      description: 指定ハンドル（@なし）のユーザープロフィールを返す。ログイン済みの場合はis_followingも返す
+      tags:
+        - users
+      summary: ユーザープロフィール取得
+      parameters:
+        - example: john_doe
+          description: ユーザーハンドル（@なし）
+          name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.UserRe\
+                  sponse"
+        "404":
+          description: ユーザーが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/users/{handle}/follow":
+    post:
+      security:
+        - BearerAuth: []
+      description: 指定ユーザーをフォローする。自分自身のフォローは不可
+      tags:
+        - users
+      summary: ユーザーをフォロー
+      parameters:
+        - example: john_doe
+          description: フォロー対象のハンドル（@なし）
+          name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: フォロー成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Succes\
+                  sResponse"
+        "400":
+          description: 自分自身をフォローしようとした
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: 対象ユーザーが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "409":
+          description: 既にフォロー済み
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+    delete:
+      security:
+        - BearerAuth: []
+      description: 指定ユーザーのフォローを解除する
+      tags:
+        - users
+      summary: フォロー解除
+      parameters:
+        - example: john_doe
+          description: フォロー解除対象のハンドル（@なし）
+          name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: フォロー解除成功
+        "401":
+          description: 未認証
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "404":
+          description: 対象ユーザーが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/users/{handle}/followers":
+    get:
+      description: 指定ユーザーのフォロワー一覧をカーソルページネーションで取得する
+      tags:
+        - users
+      summary: フォロワー一覧取得
+      parameters:
+        - example: john_doe
+          description: ユーザーハンドル（@なし）
+          name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+        - description: ページネーションカーソル
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.UserLi\
+                  stResponse"
+        "404":
+          description: ユーザーが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/users/{handle}/following":
+    get:
+      description: 指定ユーザーのフォロー中ユーザー一覧をカーソルページネーションで取得する
+      tags:
+        - users
+      summary: フォロー中一覧取得
+      parameters:
+        - example: john_doe
+          description: ユーザーハンドル（@なし）
+          name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+        - description: ページネーションカーソル
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.UserLi\
+                  stResponse"
+        "404":
+          description: ユーザーが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/users/{handle}/posts":
+    get:
+      description: 指定ユーザーの投稿（返信を除く）をカーソルページネーションで取得する（削除済み・停止ユーザーは除外）
+      tags:
+        - users
+      summary: ユーザーの投稿一覧取得
+      parameters:
+        - example: john_doe
+          description: ユーザーハンドル（@なし）
+          name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+        - description: ページネーションカーソル（前回レスポンスのnext_cursor）
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostLi\
+                  stResponse"
+        "404":
+          description: ユーザーが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+  "/users/{handle}/replies":
+    get:
+      description: 指定ユーザーが他の投稿に行った返信をカーソルページネーションで取得する（削除済み・停止ユーザーは除外）
+      tags:
+        - users
+      summary: ユーザーの返信一覧取得
+      parameters:
+        - example: john_doe
+          description: ユーザーハンドル（@なし）
+          name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+        - description: ページネーションカーソル（前回レスポンスのnext_cursor）
+          name: cursor
+          in: query
+          schema:
+            type: string
+        - description: 取得件数（デフォルト20、最大50）
+          name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostLi\
+                  stResponse"
+        "404":
+          description: ユーザーが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.ErrorR\
+                  esponse"
+tags:
+  - description: ユーザー認証（登録・ログイン・トークン管理）
+    name: auth
+  - description: ユーザープロフィール・フォロー機能
+    name: users
+  - description: 投稿のCRUDおよびコメント機能
+    name: posts
+  - description: いいね・リポスト・ブックマーク機能
+    name: interactions
+  - description: ユーザー・投稿・ハッシュタグ検索
+    name: search
+  - description: アプリ内通知
+    name: notifications
+  - description: 管理者専用機能（adminロールが必要）
+    name: admin
+servers:
+  - url: //localhost:8080/api/v1
+components:
+  securitySchemes:
+    BearerAuth:
+      description: 'JWT Access Token を入力してください。形式: "Bearer {token}"'
+      type: apiKey
+      name: Authorization
+      in: header
+  schemas:
+    github_com_atyahara_sns-backend_internal_dto.AdminUserListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.AdminU\
+              serResponse"
+        has_more:
+          type: boolean
+          example: true
+        next_cursor:
+          type: string
+          example: 2024-01-01T00:00:00Z
+    github_com_atyahara_sns-backend_internal_dto.AdminUserResponse:
+      type: object
+      properties:
+        created_at:
+          type: string
+          example: 2024-01-01T00:00:00Z
+        display_name:
+          type: string
+          example: John Doe
+        email:
+          type: string
+          example: user@example.com
+        handle:
+          type: string
+          example: john_doe
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        is_suspended:
+          type: boolean
+          example: false
+        role:
+          type: string
+          example: user
+    github_com_atyahara_sns-backend_internal_dto.AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        user:
+          $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.UserRe\
+            sponse"
+    github_com_atyahara_sns-backend_internal_dto.AvatarResponse:
+      type: object
+      properties:
+        avatar_url:
+          type: string
+          example: https://storage.googleapis.com/bucket/avatar.jpg
+    github_com_atyahara_sns-backend_internal_dto.BannerResponse:
+      type: object
+      properties:
+        banner_url:
+          type: string
+          example: https://storage.googleapis.com/bucket/banner.jpg
+    github_com_atyahara_sns-backend_internal_dto.ChangeEmailRequest:
+      type: object
+      required:
+        - current_password
+        - new_email
+      properties:
+        current_password:
+          type: string
+          example: password123
+        new_email:
+          type: string
+          example: new@example.com
+    github_com_atyahara_sns-backend_internal_dto.ChangePasswordRequest:
+      type: object
+      required:
+        - current_password
+        - new_password
+      properties:
+        current_password:
+          type: string
+          example: password123
+        new_password:
+          type: string
+          maxLength: 72
+          minLength: 8
+          example: newpassword123
+    github_com_atyahara_sns-backend_internal_dto.ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: INVALID_REQUEST
+        message:
+          type: string
+          example: リクエストが不正です
+    github_com_atyahara_sns-backend_internal_dto.GoogleLoginRequest:
+      type: object
+      required:
+        - id_token
+      properties:
+        id_token:
+          type: string
+          example: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+    github_com_atyahara_sns-backend_internal_dto.LikeResponse:
+      type: object
+      properties:
+        is_liked:
+          type: boolean
+          example: true
+        likes_count:
+          type: integer
+          example: 43
+        post_id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440003
+    github_com_atyahara_sns-backend_internal_dto.LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          example: user@example.com
+        password:
+          type: string
+          example: password123
+    github_com_atyahara_sns-backend_internal_dto.MediaResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440001
+        sort_order:
+          type: integer
+          example: 0
+        type:
+          type: string
+          example: image
+        url:
+          type: string
+          example: https://storage.googleapis.com/bucket/image.jpg
+    github_com_atyahara_sns-backend_internal_dto.NotificationListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.Notifi\
+              cationResponse"
+        has_more:
+          type: boolean
+          example: false
+        next_cursor:
+          type: string
+          example: 2024-01-01T11:59:59Z
+        unread_count:
+          type: integer
+          example: 3
+    github_com_atyahara_sns-backend_internal_dto.NotificationResponse:
+      type: object
+      properties:
+        actor:
+          $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.UserIn\
+            Post"
+        created_at:
+          type: string
+          example: 2024-01-01T12:00:00Z
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440005
+        is_read:
+          type: boolean
+          example: false
+        post:
+          $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostSu\
+            mmary"
+        type:
+          type: string
+          example: like
+    github_com_atyahara_sns-backend_internal_dto.PostListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostRe\
+              sponse"
+        has_more:
+          type: boolean
+          example: true
+        next_cursor:
+          type: string
+          example: 2024-01-01T11:59:59Z
+    github_com_atyahara_sns-backend_internal_dto.PostResponse:
+      type: object
+      properties:
+        comments_count:
+          type: integer
+          example: 5
+        content:
+          type: string
+          example: "こんにちは！今日もよい天気ですね #天気 @john_doe"
+        created_at:
+          type: string
+          example: 2024-01-01T12:00:00Z
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440003
+        is_bookmarked:
+          type: boolean
+          example: false
+        is_edited:
+          type: boolean
+          example: false
+        is_liked:
+          type: boolean
+          example: false
+        is_reposted:
+          type: boolean
+          example: false
+        likes_count:
+          type: integer
+          example: 42
+        media:
+          type: array
+          items:
+            $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.MediaR\
+              esponse"
+        reply_to:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440004
+        reply_to_user:
+          $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.UserIn\
+            Post"
+        repost_of:
+          $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.PostSu\
+            mmary"
+        reposts_count:
+          type: integer
+          example: 3
+        updated_at:
+          type: string
+          example: 2024-01-01T12:00:00Z
+        user:
+          $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.UserIn\
+            Post"
+    github_com_atyahara_sns-backend_internal_dto.PostSummary:
+      type: object
+      properties:
+        content:
+          type: string
+          example: 元の投稿内容
+        created_at:
+          type: string
+          example: 2024-01-01T00:00:00Z
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440002
+        media:
+          type: array
+          items:
+            $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.MediaR\
+              esponse"
+        user:
+          $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.UserIn\
+            Post"
+    github_com_atyahara_sns-backend_internal_dto.RefreshResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    github_com_atyahara_sns-backend_internal_dto.RegisterRequest:
+      type: object
+      required:
+        - display_name
+        - email
+        - handle
+        - password
+      properties:
+        display_name:
+          type: string
+          maxLength: 50
+          example: John Doe
+        email:
+          type: string
+          example: user@example.com
+        handle:
+          type: string
+          maxLength: 50
+          minLength: 3
+          example: john_doe
+        password:
+          type: string
+          maxLength: 72
+          minLength: 8
+          example: password123
+    github_com_atyahara_sns-backend_internal_dto.RepostResponse:
+      type: object
+      properties:
+        is_reposted:
+          type: boolean
+          example: true
+        post_id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440003
+        reposts_count:
+          type: integer
+          example: 4
+    github_com_atyahara_sns-backend_internal_dto.SuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: success
+    github_com_atyahara_sns-backend_internal_dto.UpdatePostRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          maxLength: 280
+          example: 編集後の内容
+    github_com_atyahara_sns-backend_internal_dto.UpdateProfileRequest:
+      type: object
+      properties:
+        bio:
+          type: string
+          maxLength: 160
+          example: ソフトウェアエンジニア
+        birthday:
+          type: string
+          example: 1990-01-15
+        display_name:
+          type: string
+          maxLength: 50
+          example: John Doe
+        location:
+          type: string
+          maxLength: 30
+          example: 東京
+        website_url:
+          type: string
+          maxLength: 100
+          example: https://example.com
+    github_com_atyahara_sns-backend_internal_dto.UpdateThemeRequest:
+      type: object
+      required:
+        - theme
+      properties:
+        theme:
+          type: string
+          enum:
+            - light
+            - dark
+          example: dark
+    github_com_atyahara_sns-backend_internal_dto.UserInPost:
+      type: object
+      properties:
+        avatar_url:
+          type: string
+          example: https://storage.googleapis.com/bucket/avatar.jpg
+        display_name:
+          type: string
+          example: John Doe
+        handle:
+          type: string
+          example: john_doe
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+    github_com_atyahara_sns-backend_internal_dto.UserListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/github_com_atyahara_sns-backend_internal_dto.UserRe\
+              sponse"
+        has_more:
+          type: boolean
+          example: true
+        next_cursor:
+          type: string
+          example: 2024-01-01T00:00:00Z
+    github_com_atyahara_sns-backend_internal_dto.UserResponse:
+      type: object
+      properties:
+        avatar_url:
+          type: string
+          example: https://storage.googleapis.com/bucket/avatar.jpg
+        banner_url:
+          type: string
+          example: https://storage.googleapis.com/bucket/banner.jpg
+        bio:
+          type: string
+          example: ソフトウェアエンジニアです
+        birthday:
+          type: string
+          example: 1990-01-15
+        created_at:
+          type: string
+          example: 2024-01-01T00:00:00Z
+        display_name:
+          type: string
+          example: John Doe
+        email:
+          type: string
+          example: user@example.com
+        followers_count:
+          type: integer
+          example: 120
+        following_count:
+          type: integer
+          example: 80
+        handle:
+          type: string
+          example: john_doe
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        is_following:
+          type: boolean
+          example: false
+        location:
+          type: string
+          example: 東京
+        theme:
+          type: string
+          example: light
+        website_url:
+          type: string
+          example: https://example.com

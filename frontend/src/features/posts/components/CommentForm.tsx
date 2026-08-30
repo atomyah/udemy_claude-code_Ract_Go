@@ -13,6 +13,7 @@ export const CommentForm = ({ postId, inputRef }: CommentFormProps) => {
   return (
     <ComposeBox
       compact
+      testIdPrefix="comment-form"
       inputRef={inputRef}
       placeholder="返信を投稿"
       submitLabel="返信"

@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "cmd=$(jq -r '.tool_input.command'); echo \"$cmd\" | grep -q \"swag init\" && cd \"/c/Users/atyah/workspace/Udemy-ClaudeCode_React+Go/backend\" && npx swagger2openapi ./docs/swagger.json -o ./docs/openapi.yaml -y 2>/dev/null || true",
+            "statusMessage": "openapi.yaml を生成中...",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

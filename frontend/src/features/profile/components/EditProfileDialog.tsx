@@ -89,8 +89,13 @@ export const EditProfileDialog = ({ user, open, onClose }: EditProfileDialogProp
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>プロフィールを編集</DialogTitle>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="sm"
+    >
+      <DialogTitle data-testid="edit-profile-dialog">プロフィールを編集</DialogTitle>
       <DialogContent>
         <Box
           sx={{
@@ -134,6 +139,7 @@ export const EditProfileDialog = ({ user, open, onClose }: EditProfileDialogProp
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value.slice(0, 50))}
             fullWidth
+            slotProps={{ htmlInput: { 'data-testid': 'edit-profile-display-name' } }}
           />
           <TextField
             label="自己紹介"
@@ -143,8 +149,15 @@ export const EditProfileDialog = ({ user, open, onClose }: EditProfileDialogProp
             minRows={2}
             fullWidth
             helperText={`${bio.length} / ${BIO_MAX}`}
+            slotProps={{ htmlInput: { 'data-testid': 'edit-profile-bio' } }}
           />
-          <TextField label="場所" value={location} onChange={(e) => setLocation(e.target.value.slice(0, 30))} fullWidth />
+          <TextField
+            label="場所"
+            value={location}
+            onChange={(e) => setLocation(e.target.value.slice(0, 30))}
+            fullWidth
+            slotProps={{ htmlInput: { 'data-testid': 'edit-profile-location' } }}
+          />
           <TextField
             label="ウェブサイトURL"
             value={websiteUrl}
@@ -168,7 +181,12 @@ export const EditProfileDialog = ({ user, open, onClose }: EditProfileDialogProp
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>キャンセル</Button>
-        <Button onClick={() => void handleSave()} variant="contained" disabled={isPending}>
+        <Button
+          onClick={() => void handleSave()}
+          variant="contained"
+          disabled={isPending}
+          data-testid="edit-profile-save"
+        >
           保存
         </Button>
       </DialogActions>

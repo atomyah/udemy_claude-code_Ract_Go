@@ -62,12 +62,14 @@ const ProfilePage = () => {
         </Avatar>
         <Box sx={{ pb: 1 }}>
           {isSelf ? (
-            <Button variant="outlined" onClick={() => setEditOpen(true)}>
+            <Button variant="outlined" data-testid="profile-edit-button" onClick={() => setEditOpen(true)}>
               プロフィールを編集
             </Button>
           ) : (
             <Button
               variant={profile.is_following ? 'outlined' : 'contained'}
+              data-testid="profile-follow-button"
+              data-following={profile.is_following ? 'true' : 'false'}
               onClick={() => followMutation.mutate(profile.is_following ?? false)}
               disabled={followMutation.isPending}
             >
@@ -77,13 +79,19 @@ const ProfilePage = () => {
         </Box>
       </Box>
 
-      <Box sx={{ px: 2, mt: 1 }}>
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+      <Box data-testid="profile-page" sx={{ px: 2, mt: 1 }}>
+        <Typography variant="h6" data-testid="profile-display-name" sx={{ fontWeight: 700 }}>
           {profile.display_name}
         </Typography>
-        <Typography color="text.secondary">@{profile.handle}</Typography>
+        <Typography color="text.secondary" data-testid="profile-handle">
+          @{profile.handle}
+        </Typography>
 
-        {profile.bio && <Typography sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>{profile.bio}</Typography>}
+        {profile.bio && (
+          <Typography data-testid="profile-bio" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>
+            {profile.bio}
+          </Typography>
+        )}
 
         <Stack direction="row" spacing={2} sx={{ mt: 1, rowGap: 0.5, flexWrap: 'wrap' }}>
           {profile.location && (
@@ -122,6 +130,7 @@ const ProfilePage = () => {
         <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
           <Typography
             variant="body2"
+            data-testid="profile-following-count"
             sx={{ cursor: 'pointer' }}
             onClick={() => setFollowDialog('following')}
           >
@@ -129,6 +138,7 @@ const ProfilePage = () => {
           </Typography>
           <Typography
             variant="body2"
+            data-testid="profile-followers-count"
             sx={{ cursor: 'pointer' }}
             onClick={() => setFollowDialog('followers')}
           >

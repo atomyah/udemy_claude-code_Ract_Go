@@ -21,6 +21,7 @@ type Post struct {
 	User         User    `gorm:"foreignKey:UserID"`
 	Media        []Media `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE"`
 	RepostOfPost *Post   `gorm:"foreignKey:RepostOf"`
+	ReplyToPost  *Post   `gorm:"foreignKey:ReplyTo"`
 }
 
 func (p *Post) BeforeCreate(tx *gorm.DB) error {

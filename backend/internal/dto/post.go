@@ -40,6 +40,7 @@ type PostResponse struct {
 	IsEdited      bool            `json:"is_edited"      example:"false"`
 	RepostOf      *PostSummary    `json:"repost_of,omitempty"`
 	ReplyTo       *string         `json:"reply_to,omitempty" example:"550e8400-e29b-41d4-a716-446655440004"`
+	ReplyToUser   *UserInPost     `json:"reply_to_user,omitempty"`
 	CreatedAt     string          `json:"created_at"     example:"2024-01-01T12:00:00Z"`
 	UpdatedAt     string          `json:"updated_at"     example:"2024-01-01T12:00:00Z"`
 }

@@ -40,6 +40,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	_ "github.com/atyahara/sns-backend/docs"
@@ -61,16 +62,44 @@ func main() {
 	// 依存性注入
 	// ============================================================
 	userRepo := repository.NewUserRepository(db)
+	followRepo := repository.NewFollowRepository(db)
+	postRepo := repository.NewPostRepository(db)
+	mediaRepo := repository.NewMediaRepository(db)
+	hashtagRepo := repository.NewHashtagRepository(db)
+	likeRepo := repository.NewLikeRepository(db)
+	bookmarkRepo := repository.NewBookmarkRepository(db)
+	notificationRepo := repository.NewNotificationRepository(db)
+	searchRepo := repository.NewSearchRepository(db)
 
-	authSvc := service.NewAuthService(cfg, userRepo)
+	// Firebaseは開発・本番では必須。テスト環境（ENV=test）では認証情報がなくても
+	// サーバーを起動できるようにする（E2Eテストはメール＋パスワード認証のみ使うため）
+	fbApp, err := config.NewFirebaseApp(cfg)
+	if err != nil {
+		if !cfg.IsTest() {
+			log.Fatalf("firebase app init failed: %v", err)
+		}
+		log.Printf("firebase app init skipped (ENV=test): %v", err)
+		fbApp = nil
+	}
+	authSvc := service.NewAuthService(cfg, userRepo, fbApp)
+	storageSvc := service.NewStorageService(cfg, fbApp)
+	userSvc := service.NewUserService(userRepo, followRepo)
+	postSvc := service.NewPostService(postRepo, mediaRepo, hashtagRepo, userRepo, likeRepo, bookmarkRepo, storageSvc)
+	notificationSvc := service.NewNotificationService(notificationRepo)
+	likeSvc := service.NewLikeService(postRepo, likeRepo, notificationSvc)
+	repostSvc := service.NewRepostService(postRepo, postSvc, notificationSvc)
+	bookmarkSvc := service.NewBookmarkService(postRepo, bookmarkRepo, postSvc)
+	commentSvc := service.NewCommentService(postRepo, postSvc, notificationSvc)
+	searchSvc := service.NewSearchService(searchRepo, hashtagRepo, postRepo, followRepo, postSvc)
+	adminSvc := service.NewAdminService(postRepo, userRepo)
 
 	authHandler := handler.NewAuthHandler(authSvc)
-	userHandler := handler.NewUserHandler()
-	postHandler := handler.NewPostHandler()
-	interactionHandler := handler.NewInteractionHandler()
-	searchHandler := handler.NewSearchHandler()
-	notificationHandler := handler.NewNotificationHandler()
-	adminHandler := handler.NewAdminHandler()
+	userHandler := handler.NewUserHandler(userRepo, storageSvc, userSvc, postSvc)
+	postHandler := handler.NewPostHandler(postSvc, commentSvc)
+	interactionHandler := handler.NewInteractionHandler(likeSvc, repostSvc, bookmarkSvc)
+	searchHandler := handler.NewSearchHandler(searchSvc)
+	notificationHandler := handler.NewNotificationHandler(notificationSvc)
+	adminHandler := handler.NewAdminHandler(adminSvc)
 
 	// ============================================================
 	// Echo セットアップ
@@ -81,9 +110,10 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{cfg.CORSOrigins},
-		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAuthorization},
+		AllowOrigins:     cfg.AllowedOrigins(),
+		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAuthorization},
+		AllowCredentials: true,
 	}))
 
 	if cfg.IsDevelopment() {
@@ -100,6 +130,7 @@ func main() {
 	v1 := e.Group("/api/v1")
 
 	jwtMiddleware := appMiddleware.JWTAuth(cfg.JWTSecret)
+	optionalAuthMiddleware := appMiddleware.OptionalJWTAuth(cfg.JWTSecret)
 	adminMiddleware := appMiddleware.AdminOnly()
 
 	// --- 認証（認証不要） ---
@@ -116,21 +147,24 @@ func main() {
 	v1.PUT("/users/me/avatar", userHandler.UpdateAvatar, jwtMiddleware)
 	v1.PUT("/users/me/banner", userHandler.UpdateBanner, jwtMiddleware)
 	v1.PUT("/users/me/theme", userHandler.UpdateTheme, jwtMiddleware)
-	v1.GET("/users/:handle", userHandler.GetProfile)
-	v1.GET("/users/:handle/posts", userHandler.GetUserPosts)
-	v1.GET("/users/:handle/followers", userHandler.GetFollowers)
-	v1.GET("/users/:handle/following", userHandler.GetFollowing)
+	v1.PUT("/users/me/email", userHandler.ChangeEmail, jwtMiddleware)
+	v1.PUT("/users/me/password", userHandler.ChangePassword, jwtMiddleware)
+	v1.GET("/users/:handle", userHandler.GetProfile, optionalAuthMiddleware)
+	v1.GET("/users/:handle/posts", userHandler.GetUserPosts, optionalAuthMiddleware)
+	v1.GET("/users/:handle/replies", userHandler.GetUserReplies, optionalAuthMiddleware)
+	v1.GET("/users/:handle/followers", userHandler.GetFollowers, optionalAuthMiddleware)
+	v1.GET("/users/:handle/following", userHandler.GetFollowing, optionalAuthMiddleware)
 	v1.POST("/users/:handle/follow", userHandler.Follow, jwtMiddleware)
 	v1.DELETE("/users/:handle/follow", userHandler.Unfollow, jwtMiddleware)
 
 	// --- 投稿 ---
-	v1.GET("/posts", postHandler.GetExplore)
+	v1.GET("/posts", postHandler.GetExplore, optionalAuthMiddleware)
 	v1.GET("/posts/home", postHandler.GetHome, jwtMiddleware)
 	v1.POST("/posts", postHandler.CreatePost, jwtMiddleware)
-	v1.GET("/posts/:id", postHandler.GetPost)
+	v1.GET("/posts/:id", postHandler.GetPost, optionalAuthMiddleware)
 	v1.PUT("/posts/:id", postHandler.UpdatePost, jwtMiddleware)
 	v1.DELETE("/posts/:id", postHandler.DeletePost, jwtMiddleware)
-	v1.GET("/posts/:id/comments", postHandler.GetComments)
+	v1.GET("/posts/:id/comments", postHandler.GetComments, optionalAuthMiddleware)
 	v1.POST("/posts/:id/comments", postHandler.CreateComment, jwtMiddleware)
 
 	// --- インタラクション ---
@@ -143,9 +177,9 @@ func main() {
 	v1.GET("/bookmarks", interactionHandler.GetBookmarks, jwtMiddleware)
 
 	// --- 検索 ---
-	v1.GET("/search/users", searchHandler.SearchUsers)
-	v1.GET("/search/posts", searchHandler.SearchPosts)
-	v1.GET("/search/hashtags/:tag", searchHandler.GetHashtagPosts)
+	v1.GET("/search/users", searchHandler.SearchUsers, optionalAuthMiddleware)
+	v1.GET("/search/posts", searchHandler.SearchPosts, optionalAuthMiddleware)
+	v1.GET("/search/hashtags/:tag", searchHandler.GetHashtagPosts, optionalAuthMiddleware)
 
 	// --- 通知 ---
 	v1.GET("/notifications", notificationHandler.GetNotifications, jwtMiddleware)
@@ -156,6 +190,7 @@ func main() {
 	admin.DELETE("/posts/:id", adminHandler.AdminDeletePost)
 	admin.PUT("/users/:id/suspend", adminHandler.SuspendUser)
 	admin.DELETE("/users/:id/suspend", adminHandler.UnsuspendUser)
+	admin.GET("/users", adminHandler.ListUsers)
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	e.Logger.Fatal(e.Start(addr))

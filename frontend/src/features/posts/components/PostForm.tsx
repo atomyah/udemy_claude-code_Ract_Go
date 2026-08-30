@@ -10,6 +10,7 @@ export const PostForm = ({ onSuccess }: PostFormProps) => {
 
   return (
     <ComposeBox
+      testIdPrefix="post-form"
       placeholder="いまどうしてる？"
       submitLabel="投稿"
       isPending={isPending}

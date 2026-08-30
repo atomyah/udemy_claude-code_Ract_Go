@@ -64,14 +64,14 @@ export const InfinitePostList = ({
 
   if (posts.length === 0) {
     return (
-      <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+      <Typography color="text.secondary" data-testid="post-list-empty" sx={{ p: 2, textAlign: 'center' }}>
         {emptyMessage}
       </Typography>
     );
   }
 
   return (
-    <Box>
+    <Box data-testid="post-list">
       {posts.map((post) => (
         <PostCard key={post.id} post={post} />
       ))}

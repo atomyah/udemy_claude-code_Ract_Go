@@ -1,8 +1,4 @@
 # 環境変数
-.env
-.env.local
-.env.*.local
-backend/.env
 
 # Go ビルド成果物
 backend/tmp/
@@ -12,11 +8,13 @@ backend/server
 frontend/node_modules/
 frontend/dist/
 frontend/src/api/generated/
+frontend/playwright/.auth/
 
 # Firebase 認証情報
 *.serviceAccountKey.json
 firebase-credentials.json
 service-account.json
+*firebase-adminsdk*.json
 
 # IDE
 .idea/
@@ -30,3 +28,26 @@ Thumbs.db
 
 # ログ
 *.log
+
+# Context7 API Key
+.mcp.json
+
+# 環境変数（.env.test / .env.e2e は秘密情報を含まないためコミットする）
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env.local
+
+# テスト結果・レポート
+frontend/playwright-report/
+frontend/test-results/
+frontend/blob-report/
+frontend/playwright/.cache/
+backend/coverage.out
+backend/coverage.html
+backend/tmp_test/
+.playwright-mcp/
+
+# セッションのサマリーメモ（APIキーの貼り付けを含むためコミットしない）
+/サマリー*.txt

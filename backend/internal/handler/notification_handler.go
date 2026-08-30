@@ -4,15 +4,20 @@ import (
 	"net/http"
 
 	"github.com/atyahara/sns-backend/internal/dto"
+	"github.com/atyahara/sns-backend/internal/service"
+	"github.com/atyahara/sns-backend/internal/utils"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
 // NotificationHandler は通知関連のHTTPハンドラー
-type NotificationHandler struct{}
+type NotificationHandler struct {
+	notificationSvc service.NotificationService
+}
 
 // NewNotificationHandler はNotificationHandlerを生成する
-func NewNotificationHandler() *NotificationHandler {
-	return &NotificationHandler{}
+func NewNotificationHandler(notificationSvc service.NotificationService) *NotificationHandler {
+	return &NotificationHandler{notificationSvc: notificationSvc}
 }
 
 // GetNotifications godoc
@@ -28,7 +33,19 @@ func NewNotificationHandler() *NotificationHandler {
 // @Router       /notifications [get]
 // @Security     BearerAuth
 func (h *NotificationHandler) GetNotifications(c echo.Context) error {
-	return c.JSON(http.StatusNotImplemented, dto.ErrorResponse{Code: "NOT_IMPLEMENTED", Message: "実装予定"})
+	userID, ok := c.Get("userID").(uuid.UUID)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "MISSING_TOKEN", Message: "認証が必要です"})
+	}
+	cursor := c.QueryParam("cursor")
+	limit := utils.ParseLimit(c.QueryParam("limit"), defaultListLimit, maxListLimit)
+
+	resp, err := h.notificationSvc.GetNotifications(c.Request().Context(), userID, cursor, limit)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }
 
 // MarkAllRead godoc
@@ -42,5 +59,14 @@ func (h *NotificationHandler) GetNotifications(c echo.Context) error {
 // @Router       /notifications/read [put]
 // @Security     BearerAuth
 func (h *NotificationHandler) MarkAllRead(c echo.Context) error {
-	return c.JSON(http.StatusNotImplemented, dto.ErrorResponse{Code: "NOT_IMPLEMENTED", Message: "実装予定"})
+	userID, ok := c.Get("userID").(uuid.UUID)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "MISSING_TOKEN", Message: "認証が必要です"})
+	}
+
+	if err := h.notificationSvc.MarkAllRead(c.Request().Context(), userID); err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "既読処理に失敗しました"})
+	}
+
+	return c.NoContent(http.StatusNoContent)
 }

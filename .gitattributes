@@ -1,0 +1,4 @@
+# シェルスクリプトと Makefile は Linux コンテナ内で実行するため、必ず LF で保存する。
+# （Windows の core.autocrlf=true による CRLF 変換を防ぐ）
+*.sh     text eol=lf
+Makefile text eol=lf

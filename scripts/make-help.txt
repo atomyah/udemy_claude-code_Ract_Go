@@ -1,0 +1,10 @@
+利用可能なコマンド:
+  make help          : 全コマンドの一覧を表示
+  make dev-up        : 開発環境を起動（db / api / adminer）
+  make dev-down      : 開発環境を停止
+  make dev-logs      : 開発環境のログを表示
+  make test-setup    : テスト環境を起動（profile: test / db_test:5433 api_test:8081）
+  make test-teardown : テスト環境を停止・削除（開発環境には影響しない）
+  make test-backend  : テスト環境起動 → バックエンド単体テスト実行 → テスト環境停止
+  make test-e2e      : テスト環境起動 → E2Eテスト（Playwright）実行 → テスト環境停止
+  make test          : test-backend と test-e2e を両方実行

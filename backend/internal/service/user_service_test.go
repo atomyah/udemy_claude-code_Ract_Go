@@ -22,14 +22,50 @@ func TestUserService_Follow_Success(t *testing.T) {
 	followRepo := new(mockFollowRepo)
 	userRepo.On("FindByHandle", mock.Anything, "hanako").Return(target, nil)
 	followRepo.On("Exists", mock.Anything, followerID, target.ID).Return(false, nil)
-	followRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Follow")).Return(nil)
+	// 呼び出し順に依存せず、作成されるFollowの中身そのものを検証する
+	followRepo.On("Create", mock.Anything, mock.MatchedBy(func(f *model.Follow) bool {
+		return f != nil && f.FollowerID == followerID && f.FollowingID == target.ID
+	})).Return(nil)
 
-	svc := NewUserService(userRepo, followRepo)
+	// フォローされた相手に「follow」通知が作られる（投稿に紐づかないのでpostIDはnil）
+	notifySvc := new(mockNotificationSvc)
+	notifySvc.On("Notify", mock.Anything, target.ID, followerID, "follow", (*uuid.UUID)(nil)).Return(nil)
+
+	svc := NewUserService(userRepo, followRepo, notifySvc)
+
 	require.NoError(t, svc.Follow(context.Background(), followerID, "hanako"))
+	followRepo.AssertExpectations(t)
+	notifySvc.AssertExpectations(t)
+}
 
-	created := followRepo.Calls[1].Arguments.Get(1).(*model.Follow)
-	assert.Equal(t, followerID, created.FollowerID)
-	assert.Equal(t, target.ID, created.FollowingID)
+func TestUserService_Follow_SelfFollow_DoesNotNotify(t *testing.T) {
+	userID := uuid.New()
+	userRepo := new(mockUserRepo)
+	userRepo.On("FindByHandle", mock.Anything, "taro").Return(&model.User{ID: userID, Handle: "taro"}, nil)
+	notifySvc := new(mockNotificationSvc)
+
+	svc := NewUserService(userRepo, new(mockFollowRepo), notifySvc)
+	err := svc.Follow(context.Background(), userID, "taro")
+
+	assert.ErrorIs(t, err, ErrSelfFollow)
+	notifySvc.AssertNotCalled(t, "Notify", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserService_Unfollow_DoesNotNotify(t *testing.T) {
+	followerID := uuid.New()
+	target := &model.User{ID: uuid.New(), Handle: "hanako"}
+
+	userRepo := new(mockUserRepo)
+	followRepo := new(mockFollowRepo)
+	userRepo.On("FindByHandle", mock.Anything, "hanako").Return(target, nil)
+	followRepo.On("Exists", mock.Anything, followerID, target.ID).Return(true, nil)
+	followRepo.On("Delete", mock.Anything, followerID, target.ID).Return(nil)
+	notifySvc := new(mockNotificationSvc)
+
+	svc := NewUserService(userRepo, followRepo, notifySvc)
+
+	require.NoError(t, svc.Unfollow(context.Background(), followerID, "hanako"))
+	notifySvc.AssertNotCalled(t, "Notify", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestUserService_Follow_SelfFollowIsRejected(t *testing.T) {
@@ -37,7 +73,7 @@ func TestUserService_Follow_SelfFollowIsRejected(t *testing.T) {
 	userRepo := new(mockUserRepo)
 	userRepo.On("FindByHandle", mock.Anything, "taro").Return(&model.User{ID: userID, Handle: "taro"}, nil)
 
-	svc := NewUserService(userRepo, new(mockFollowRepo))
+	svc := NewUserService(userRepo, new(mockFollowRepo), new(mockNotificationSvc))
 	err := svc.Follow(context.Background(), userID, "taro")
 
 	assert.ErrorIs(t, err, ErrSelfFollow)
@@ -52,7 +88,7 @@ func TestUserService_Follow_AlreadyFollowing(t *testing.T) {
 	userRepo.On("FindByHandle", mock.Anything, "hanako").Return(target, nil)
 	followRepo.On("Exists", mock.Anything, followerID, target.ID).Return(true, nil)
 
-	svc := NewUserService(userRepo, followRepo)
+	svc := NewUserService(userRepo, followRepo, new(mockNotificationSvc))
 	err := svc.Follow(context.Background(), followerID, "hanako")
 
 	assert.ErrorIs(t, err, ErrAlreadyFollowed)
@@ -63,7 +99,7 @@ func TestUserService_Follow_UserNotFound(t *testing.T) {
 	userRepo := new(mockUserRepo)
 	userRepo.On("FindByHandle", mock.Anything, "unknown").Return(nil, repository.ErrNotFound)
 
-	svc := NewUserService(userRepo, new(mockFollowRepo))
+	svc := NewUserService(userRepo, new(mockFollowRepo), new(mockNotificationSvc))
 	err := svc.Follow(context.Background(), uuid.New(), "unknown")
 
 	assert.ErrorIs(t, err, repository.ErrNotFound)
@@ -79,7 +115,7 @@ func TestUserService_Unfollow_Success(t *testing.T) {
 	followRepo.On("Exists", mock.Anything, followerID, target.ID).Return(true, nil)
 	followRepo.On("Delete", mock.Anything, followerID, target.ID).Return(nil)
 
-	svc := NewUserService(userRepo, followRepo)
+	svc := NewUserService(userRepo, followRepo, new(mockNotificationSvc))
 
 	require.NoError(t, svc.Unfollow(context.Background(), followerID, "hanako"))
 	followRepo.AssertExpectations(t)
@@ -94,7 +130,7 @@ func TestUserService_Unfollow_NotFollowing(t *testing.T) {
 	userRepo.On("FindByHandle", mock.Anything, "hanako").Return(target, nil)
 	followRepo.On("Exists", mock.Anything, followerID, target.ID).Return(false, nil)
 
-	svc := NewUserService(userRepo, followRepo)
+	svc := NewUserService(userRepo, followRepo, new(mockNotificationSvc))
 	err := svc.Unfollow(context.Background(), followerID, "hanako")
 
 	assert.ErrorIs(t, err, ErrNotFollowing)
@@ -112,7 +148,7 @@ func TestUserService_GetProfile_IncludesCounts(t *testing.T) {
 	followRepo.On("CountFollowing", mock.Anything, target.ID).Return(5, nil)
 	followRepo.On("Exists", mock.Anything, viewerID, target.ID).Return(true, nil)
 
-	svc := NewUserService(userRepo, followRepo)
+	svc := NewUserService(userRepo, followRepo, new(mockNotificationSvc))
 	resp, err := svc.GetProfile(context.Background(), "hanako", &viewerID)
 
 	require.NoError(t, err)
@@ -134,7 +170,7 @@ func TestUserService_UpdateProfile_Success(t *testing.T) {
 	followRepo.On("CountFollowing", mock.Anything, userID).Return(0, nil)
 	followRepo.On("Exists", mock.Anything, userID, userID).Return(false, nil)
 
-	svc := NewUserService(userRepo, followRepo)
+	svc := NewUserService(userRepo, followRepo, new(mockNotificationSvc))
 	resp, err := svc.UpdateProfile(context.Background(), userID, &dto.UpdateProfileRequest{
 		DisplayName: "タロウ改",
 		Bio:         &bio,
@@ -156,7 +192,7 @@ func TestUserService_ChangePassword_WrongCurrentPassword(t *testing.T) {
 	userRepo := new(mockUserRepo)
 	userRepo.On("FindByID", mock.Anything, userID).Return(user, nil)
 
-	svc := NewUserService(userRepo, new(mockFollowRepo))
+	svc := NewUserService(userRepo, new(mockFollowRepo), new(mockNotificationSvc))
 	err = svc.ChangePassword(context.Background(), userID, &dto.ChangePasswordRequest{
 		CurrentPassword: "wrong-password",
 		NewPassword:     "newpassword123",
@@ -177,7 +213,7 @@ func TestUserService_ChangeEmail_EmailTaken(t *testing.T) {
 	userRepo.On("FindByID", mock.Anything, userID).Return(user, nil)
 	userRepo.On("ExistsByEmail", mock.Anything, "taken@example.com").Return(true, nil)
 
-	svc := NewUserService(userRepo, new(mockFollowRepo))
+	svc := NewUserService(userRepo, new(mockFollowRepo), new(mockNotificationSvc))
 	err = svc.ChangeEmail(context.Background(), userID, &dto.ChangeEmailRequest{
 		NewEmail:        "taken@example.com",
 		CurrentPassword: "password123",
@@ -195,7 +231,7 @@ func TestUserService_UpdateTheme_Success(t *testing.T) {
 	userRepo.On("FindByID", mock.Anything, userID).Return(user, nil)
 	userRepo.On("Update", mock.Anything, user).Return(nil)
 
-	svc := NewUserService(userRepo, new(mockFollowRepo))
+	svc := NewUserService(userRepo, new(mockFollowRepo), new(mockNotificationSvc))
 
 	require.NoError(t, svc.UpdateTheme(context.Background(), userID, "dark"))
 	assert.Equal(t, "dark", user.Theme)

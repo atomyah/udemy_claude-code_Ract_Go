@@ -44,7 +44,7 @@ func newFileHeaders(t *testing.T, contents ...[]byte) []*multipart.FileHeader {
 
 // newPostService はモックを注入したPostServiceを組み立てる
 func newPostService(postRepo *mockPostRepo, likeRepo *mockLikeRepo, bookmarkRepo *mockBookmarkRepo) PostService {
-	return NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), new(mockUserRepo), likeRepo, bookmarkRepo, new(mockStorageSvc))
+	return NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), new(mockUserRepo), likeRepo, bookmarkRepo, new(mockStorageSvc), new(mockNotificationSvc))
 }
 
 // expectCounts はToPostResponseが呼ぶ集計系のモックを設定する
@@ -229,4 +229,62 @@ func TestPostService_GetExploreTimeline_InvalidCursor(t *testing.T) {
 	_, err := svc.GetExploreTimeline(context.Background(), nil, "not-a-timestamp", 20)
 
 	assert.Error(t, err)
+}
+
+// TestPostService_CreatePost_NotifiesMentionedUsers は本文中の@ハンドルに
+// メンション通知が作られることを検証する
+func TestPostService_CreatePost_NotifiesMentionedUsers(t *testing.T) {
+	userID := uuid.New()
+	postID := uuid.New()
+	mentioned := &model.User{ID: uuid.New(), Handle: "hanako"}
+	content := "@hanako ありがとう！ @unknown_user"
+	stored := &model.Post{ID: postID, UserID: userID, Content: content}
+
+	postRepo := new(mockPostRepo)
+	likeRepo := new(mockLikeRepo)
+	bookmarkRepo := new(mockBookmarkRepo)
+	userRepo := new(mockUserRepo)
+	notifySvc := new(mockNotificationSvc)
+
+	postRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Post")).
+		Run(func(args mock.Arguments) { args.Get(1).(*model.Post).ID = postID }).Return(nil)
+	postRepo.On("FindByID", mock.Anything, postID).Return(stored, nil)
+	expectCounts(postRepo, likeRepo, bookmarkRepo, postID)
+	userRepo.On("FindByHandle", mock.Anything, "hanako").Return(mentioned, nil)
+	// 存在しないハンドルは無視する
+	userRepo.On("FindByHandle", mock.Anything, "unknown_user").Return(nil, repository.ErrNotFound)
+	notifySvc.On("Notify", mock.Anything, mentioned.ID, userID, "mention", &postID).Return(nil)
+
+	svc := NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), userRepo, likeRepo, bookmarkRepo,
+		new(mockStorageSvc), notifySvc)
+	_, err := svc.CreatePost(context.Background(), userID, content, nil)
+
+	require.NoError(t, err)
+	notifySvc.AssertExpectations(t)
+	notifySvc.AssertNumberOfCalls(t, "Notify", 1)
+}
+
+// TestPostService_CreatePost_WithoutMention_DoesNotNotify は
+// メンションが無い投稿では通知が作られないことを検証する
+func TestPostService_CreatePost_WithoutMention_DoesNotNotify(t *testing.T) {
+	userID := uuid.New()
+	postID := uuid.New()
+	stored := &model.Post{ID: postID, UserID: userID, Content: "メンションなしの投稿"}
+
+	postRepo := new(mockPostRepo)
+	likeRepo := new(mockLikeRepo)
+	bookmarkRepo := new(mockBookmarkRepo)
+	notifySvc := new(mockNotificationSvc)
+
+	postRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Post")).
+		Run(func(args mock.Arguments) { args.Get(1).(*model.Post).ID = postID }).Return(nil)
+	postRepo.On("FindByID", mock.Anything, postID).Return(stored, nil)
+	expectCounts(postRepo, likeRepo, bookmarkRepo, postID)
+
+	svc := NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), new(mockUserRepo), likeRepo,
+		bookmarkRepo, new(mockStorageSvc), notifySvc)
+	_, err := svc.CreatePost(context.Background(), userID, "メンションなしの投稿", nil)
+
+	require.NoError(t, err)
+	notifySvc.AssertNotCalled(t, "Notify", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

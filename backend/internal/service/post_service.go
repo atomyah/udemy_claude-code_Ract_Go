@@ -38,13 +38,14 @@ type PostService interface {
 }
 
 type postService struct {
-	postRepo     repository.PostRepository
-	mediaRepo    repository.MediaRepository
-	hashtagRepo  repository.HashtagRepository
-	userRepo     repository.UserRepository
-	likeRepo     repository.LikeRepository
-	bookmarkRepo repository.BookmarkRepository
-	storageSvc   StorageService
+	postRepo        repository.PostRepository
+	mediaRepo       repository.MediaRepository
+	hashtagRepo     repository.HashtagRepository
+	userRepo        repository.UserRepository
+	likeRepo        repository.LikeRepository
+	bookmarkRepo    repository.BookmarkRepository
+	storageSvc      StorageService
+	notificationSvc NotificationService
 }
 
 func NewPostService(
@@ -55,15 +56,17 @@ func NewPostService(
 	likeRepo repository.LikeRepository,
 	bookmarkRepo repository.BookmarkRepository,
 	storageSvc StorageService,
+	notificationSvc NotificationService,
 ) PostService {
 	return &postService{
-		postRepo:     postRepo,
-		mediaRepo:    mediaRepo,
-		hashtagRepo:  hashtagRepo,
-		userRepo:     userRepo,
-		likeRepo:     likeRepo,
-		bookmarkRepo: bookmarkRepo,
-		storageSvc:   storageSvc,
+		postRepo:        postRepo,
+		mediaRepo:       mediaRepo,
+		hashtagRepo:     hashtagRepo,
+		userRepo:        userRepo,
+		likeRepo:        likeRepo,
+		bookmarkRepo:    bookmarkRepo,
+		storageSvc:      storageSvc,
+		notificationSvc: notificationSvc,
 	}
 }
 
@@ -115,12 +118,34 @@ func (s *postService) CreateWithRefs(ctx context.Context, userID uuid.UUID, cont
 		}
 	}
 
+	if err := s.notifyMentions(ctx, post.ID, userID, content); err != nil {
+		return nil, err
+	}
+
 	post, err := s.postRepo.FindByID(ctx, post.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	return s.ToPostResponse(ctx, post, &userID)
+}
+
+// notifyMentions は本文中の@ハンドルにメンション通知を作成する。
+// 存在しないハンドルは無視し、自分自身への通知はNotificationService側でスキップされる。
+func (s *postService) notifyMentions(ctx context.Context, postID, actorID uuid.UUID, content string) error {
+	for _, handle := range utils.ExtractMentions(content) {
+		user, err := s.userRepo.FindByHandle(ctx, handle)
+		if errors.Is(err, repository.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := s.notificationSvc.Notify(ctx, user.ID, actorID, "mention", &postID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *postService) GetPost(ctx context.Context, id uuid.UUID, viewerID *uuid.UUID) (*dto.PostResponse, error) {

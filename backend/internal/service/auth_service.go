@@ -28,6 +28,10 @@ var (
 	ErrInvalidIDToken     = errors.New("invalid firebase id token")
 	ErrInvalidPassword    = errors.New("invalid current password")
 	ErrNoPassword         = errors.New("account has no password set")
+	// ErrPasswordTooLong は bcrypt の上限（72バイト）を超えたパスワードを表す。
+	// validator の max=72 は「文字数」で数えるため、日本語など1文字が複数バイトになる
+	// パスワードはバリデーションを通過したあとでbcryptが弾く。
+	ErrPasswordTooLong = errors.New("password exceeds bcrypt 72 bytes limit")
 )
 
 var handleSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_]`)
@@ -75,6 +79,9 @@ func (s *authService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 
 	// パスワードをハッシュ化する
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
+	if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+		return nil, ErrPasswordTooLong
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -6,7 +6,13 @@ type InfinitePostsData = InfiniteData<PostListResponse>;
 
 const isPostListQuery = (query: Query): boolean => {
   const key = query.queryKey[0];
-  return key === 'posts' || key === 'bookmarks' || key === 'search';
+  if (key === 'posts' || key === 'bookmarks' || key === 'search') {
+    return true;
+  }
+  // プロフィールの投稿・返信一覧（['users', handle, 'posts' | 'replies']）も投稿リストなので対象に含める。
+  // フォロワー一覧などユーザーを返すクエリは除外する。
+  const subKey = query.queryKey[2];
+  return key === 'users' && (subKey === 'posts' || subKey === 'replies');
 };
 
 export const updatePostInCaches = (

@@ -19,7 +19,8 @@ export const LinkifiedText = ({ text }: LinkifiedTextProps) => {
             <Link
               key={index}
               component={RouterLink}
-              to={`/explore?q=${encodeURIComponent(part)}`}
+              to={`/hashtag/${encodeURIComponent(part.slice(1))}`}
+              data-testid="hashtag-link"
               underline="hover"
               onClick={(e) => e.stopPropagation()}
             >

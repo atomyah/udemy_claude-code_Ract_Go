@@ -101,17 +101,19 @@ func TestNotificationService_Notify_CreatesNotification(t *testing.T) {
 	postID := uuid.New()
 
 	notificationRepo := new(mockNotificationRepo)
-	notificationRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Notification")).Return(nil)
+	// 呼び出し順に依存せず、作成される通知の中身そのものを検証する
+	notificationRepo.On("Create", mock.Anything, mock.MatchedBy(func(n *model.Notification) bool {
+		return n != nil &&
+			n.UserID == recipientID &&
+			n.ActorID == actorID &&
+			n.Type == "comment" &&
+			n.PostID != nil && *n.PostID == postID
+	})).Return(nil)
 
 	svc := NewNotificationService(notificationRepo)
-	require.NoError(t, svc.Notify(context.Background(), recipientID, actorID, "comment", &postID))
 
-	created := notificationRepo.Calls[0].Arguments.Get(1).(*model.Notification)
-	assert.Equal(t, recipientID, created.UserID)
-	assert.Equal(t, actorID, created.ActorID)
-	assert.Equal(t, "comment", created.Type)
-	require.NotNil(t, created.PostID)
-	assert.Equal(t, postID, *created.PostID)
+	require.NoError(t, svc.Notify(context.Background(), recipientID, actorID, "comment", &postID))
+	notificationRepo.AssertExpectations(t)
 }
 
 func TestNotificationService_MarkAllRead(t *testing.T) {

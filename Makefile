@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev-up dev-down dev-logs test-setup test-teardown test-backend test-e2e test
+.PHONY: help dev-up dev-down dev-logs test-setup test-teardown test-backend test-frontend test-e2e test
 
 COMPOSE      := docker compose
 TEST_COMPOSE := docker compose --profile test
@@ -55,10 +55,15 @@ test-e2e: test-setup
 	"$(MAKE)" test-teardown; \
 	exit $$status
 
-## test: バックエンド単体テストとE2Eテストを両方実行する
+## test-frontend: フロントエンドの単体テスト（Vitest）を実行する（テスト環境は不要）
+test-frontend:
+	cd frontend && npm run test
+
+## test: バックエンド単体テスト・フロントエンド単体テスト・E2Eテストをすべて実行する
 test:
 	@set +e; \
 	"$(MAKE)" test-backend; backend_status=$$?; \
+	"$(MAKE)" test-frontend; frontend_status=$$?; \
 	"$(MAKE)" test-e2e; e2e_status=$$?; \
-	sh scripts/test-summary.sh $$backend_status $$e2e_status; \
-	exit $$((backend_status + e2e_status))
+	sh scripts/test-summary.sh $$backend_status $$e2e_status $$frontend_status; \
+	exit $$((backend_status + frontend_status + e2e_status))

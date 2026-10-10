@@ -45,4 +45,55 @@ test.describe('認証', () => {
     await expect(page).toHaveURL(/\/login$/);
     await expect(page.getByTestId('login-page')).toBeVisible();
   });
+
+  test('既に使われているメールアドレスでは登録できず日本語エラーが表示される', async ({ page }) => {
+    const user = makeUser('dup_email');
+    await register(page, user);
+    await logout(page);
+
+    // メールアドレスだけ既存ユーザーと同じにして登録を試みる
+    const duplicate = makeUser('dup_email2');
+    await page.goto('/signup');
+    await page.getByTestId('signup-email').fill(user.email);
+    await page.getByTestId('signup-display-name').fill(duplicate.displayName);
+    await page.getByTestId('signup-handle').fill(duplicate.handle);
+    await page.getByTestId('signup-password').fill(duplicate.password);
+    await page.getByTestId('signup-confirm-password').fill(duplicate.password);
+    await page.getByTestId('signup-submit').click();
+
+    await expect(page.getByTestId('signup-error')).toHaveText('このメールアドレスは既に使用されています');
+    await expect(page).toHaveURL(/\/signup$/);
+  });
+
+  test('既に使われているユーザーIDでは登録できず日本語エラーが表示される', async ({ page }) => {
+    const user = makeUser('dup_handle');
+    await register(page, user);
+    await logout(page);
+
+    const duplicate = makeUser('dup_handle2');
+    await page.goto('/signup');
+    await page.getByTestId('signup-email').fill(duplicate.email);
+    await page.getByTestId('signup-display-name').fill(duplicate.displayName);
+    await page.getByTestId('signup-handle').fill(user.handle);
+    await page.getByTestId('signup-password').fill(duplicate.password);
+    await page.getByTestId('signup-confirm-password').fill(duplicate.password);
+    await page.getByTestId('signup-submit').click();
+
+    await expect(page.getByTestId('signup-error')).toHaveText('このハンドルは既に使用されています');
+  });
+
+  test('8文字未満のパスワードでは登録できずフォームにエラーが表示される', async ({ page }) => {
+    const user = makeUser('short_pw');
+
+    await page.goto('/signup');
+    await page.getByTestId('signup-email').fill(user.email);
+    await page.getByTestId('signup-display-name').fill(user.displayName);
+    await page.getByTestId('signup-handle').fill(user.handle);
+    await page.getByTestId('signup-password').fill('short12');
+    await page.getByTestId('signup-confirm-password').fill('short12');
+    await page.getByTestId('signup-submit').click();
+
+    await expect(page.getByTestId('signup-page')).toBeVisible();
+    await expect(page).toHaveURL(/\/signup$/);
+  });
 });

@@ -4,7 +4,7 @@
 
 - バックエンド: サービス層のユニットテスト + ハンドラー層の統合テストを書く。
 - フロントエンド: コンポーネントの表示テスト + カスタムフックのテストを書く。
-- E2E テストはオプション（PHASE14 で対応）。
+- E2E テスト（Playwright）で主要な画面フローを検証する。
 - テストなしでの `main` / `develop` へのマージは禁止。
 
 ---
@@ -113,7 +113,8 @@ go test ./internal/service/...
 | テストランナー | Vitest |
 | コンポーネントテスト | `@testing-library/react` |
 | DOM マッチャー | `@testing-library/jest-dom` |
-| API モック | `msw`（Mock Service Worker） |
+| DOM 実装 | `jsdom` |
+| API モック | `vi.mock` でフック・API モジュールを差し替える（MSW は使わない） |
 | フックテスト | `@testing-library/react` の `renderHook` |
 
 ### ディレクトリ構成
@@ -129,9 +130,9 @@ frontend/src/
 │       └── hooks/
 │           ├── useLike.ts
 │           └── useLike.test.ts # フックテスト
-└── mocks/
-    ├── handlers.ts             # MSW ハンドラー定義
-    └── server.ts               # MSW サーバー設定
+└── test/
+    ├── setup.ts                # jest-dom の読み込み（vite.config.ts の setupFiles）
+    └── renderWithProviders.tsx # QueryClient / Router / Toast を適用する共通レンダラー
 ```
 
 ### コンポーネントテスト
@@ -155,20 +156,17 @@ test('いいねボタンを押すといいね数が増える', async () => {
 });
 ```
 
-### API モック（MSW）
+### API モック（`vi.mock`）
 
-- テスト中の API リクエストは MSW でインターセプトする。実際のバックエンドは使わない。
-- モックハンドラーは `src/mocks/handlers.ts` に集約する。
+- テスト中は実際のバックエンドに接続しない。TanStack Query のフック（`useLike` など）や `features/*/api.ts` を `vi.mock` で差し替える。
+- Provider が必要なコンポーネントは `src/test/renderWithProviders.tsx` でレンダリングする。`AuthContext` は `vi.mock` で状態を固定する。
 
-```ts
-// src/mocks/handlers.ts
-import { http, HttpResponse } from 'msw';
+```tsx
+vi.mock('../../features/posts/hooks/useLike', () => ({
+  useLike: () => ({ mutate: likeMutate, isPending: false }),
+}));
 
-export const handlers = [
-  http.get('/api/v1/posts/home', () => {
-    return HttpResponse.json({ data: [mockPost], nextCursor: null, hasMore: false });
-  }),
-];
+renderWithProviders(<PostCard post={post} />);
 ```
 
 ### テスト命名規則
@@ -185,16 +183,13 @@ test('状況 + 期待する振る舞い', ...)
 ### テスト実行
 
 ```bash
+# Makefile 経由（推奨）
+make test-frontend
+
+# 直接実行する場合
 cd frontend
-
-# 全テスト実行
-npm run test
-
-# ウォッチモード
-npm run test -- --watch
-
-# カバレッジ
-npm run test -- --coverage
+npm run test          # 全テスト実行
+npm run test:watch    # ウォッチモード
 ```
 
 ---

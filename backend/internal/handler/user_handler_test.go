@@ -255,3 +255,41 @@ func TestUserHandler_ChangeEmail_InvalidEmail_ReturnsJapaneseMessage(t *testing.
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Equal(t, "新しいメールアドレスの形式が正しくありません", decodeErrorResponse(t, rec).Message)
 }
+
+// TestUserHandler_UpdateAvatar_FileTooLarge_ReturnsJapaneseMessage は
+// アバター画像が5MBを超えたときに400と日本語メッセージが返ることを検証する
+func TestUserHandler_UpdateAvatar_FileTooLarge_ReturnsJapaneseMessage(t *testing.T) {
+	storageSvc := new(mockStorageSvc)
+	storageSvc.On("UploadImage", mock.Anything, "avatars", mock.Anything).
+		Return("", service.ErrFileTooLarge)
+
+	c, rec := newFileFormContext(t, http.MethodPut, "/api/v1/users/me/avatar", "avatar", "big.png", []byte("dummy"))
+	withAuth(c, uuid.New())
+
+	h := NewUserHandler(new(mockUserRepo), storageSvc, new(mockUserSvc), new(mockPostSvc))
+	require.NoError(t, h.UpdateAvatar(c))
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	body := decodeErrorResponse(t, rec)
+	assert.Equal(t, "VALIDATION_ERROR", body.Code)
+	assert.Equal(t, "ファイルサイズは5MB以内にしてください", body.Message)
+	storageSvc.AssertExpectations(t)
+}
+
+// TestUserHandler_UpdateBanner_FileTooLarge_ReturnsJapaneseMessage は
+// バナー画像でも同じ扱いになることを検証する
+func TestUserHandler_UpdateBanner_FileTooLarge_ReturnsJapaneseMessage(t *testing.T) {
+	storageSvc := new(mockStorageSvc)
+	storageSvc.On("UploadImage", mock.Anything, "banners", mock.Anything).
+		Return("", service.ErrFileTooLarge)
+
+	c, rec := newFileFormContext(t, http.MethodPut, "/api/v1/users/me/banner", "banner", "big.png", []byte("dummy"))
+	withAuth(c, uuid.New())
+
+	h := NewUserHandler(new(mockUserRepo), storageSvc, new(mockUserSvc), new(mockPostSvc))
+	require.NoError(t, h.UpdateBanner(c))
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, "ファイルサイズは5MB以内にしてください", decodeErrorResponse(t, rec).Message)
+	storageSvc.AssertExpectations(t)
+}

@@ -7,6 +7,10 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+// passwordTooLongMessage は bcrypt の上限（72バイト）を超えたときのユーザー向けメッセージ。
+// 日本語などマルチバイト文字は1文字で3バイト前後になるため「文字数」では説明しない。
+const passwordTooLongMessage = "パスワードが長すぎます。半角英数字なら72文字、日本語を含む場合は24文字程度までにしてください"
+
 // fieldLabels はDTOのフィールド名をユーザー向けの日本語ラベルに対応づける
 var fieldLabels = map[string]string{
 	"Email":           "メールアドレス",

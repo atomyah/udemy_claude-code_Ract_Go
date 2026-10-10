@@ -46,6 +46,9 @@ const NotificationItem = ({ notification }: { notification: NotificationResponse
       direction="row"
       spacing={1.5}
       onClick={handleClick}
+      data-testid="notification-item"
+      data-type={type}
+      data-read={notification.is_read ? 'true' : 'false'}
       sx={{
         p: 2,
         cursor: 'pointer',
@@ -111,12 +114,17 @@ const NotificationsPage = () => {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
-    <Box>
+    <Box data-testid="notifications-page">
       <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
           通知
         </Typography>
-        <Button size="small" onClick={() => markAllReadMutation.mutate()} disabled={markAllReadMutation.isPending}>
+        <Button
+          size="small"
+          data-testid="notifications-mark-all-read"
+          onClick={() => markAllReadMutation.mutate()}
+          disabled={markAllReadMutation.isPending}
+        >
           すべて既読にする
         </Button>
       </Stack>
@@ -124,11 +132,11 @@ const NotificationsPage = () => {
       {notifications.isLoading ? (
         <LoadingSpinner />
       ) : items.length === 0 ? (
-        <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center' }}>
+        <Typography color="text.secondary" data-testid="notifications-empty" sx={{ p: 3, textAlign: 'center' }}>
           通知はありません
         </Typography>
       ) : (
-        <Box>
+        <Box data-testid="notification-list">
           {items.map((n) => (
             <NotificationItem key={n.id} notification={n} />
           ))}

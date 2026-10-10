@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/atyahara/sns-backend/internal/model"
@@ -226,4 +227,96 @@ func TestSearchRepository_SearchUsersAndPosts(t *testing.T) {
 	none, _, err := repo.SearchPosts(ctx, "該当なし", nil, 20)
 	require.NoError(t, err)
 	assert.Empty(t, none)
+}
+
+// TestSearchRepository_SearchPosts_SpecialCharactersAreTreatedAsLiterals は
+// ILIKEのワイルドカード（% _）やシングルクォートを含む検索語が
+// SQLとして解釈されず、ただの文字として扱われることを検証する
+func TestSearchRepository_SearchPosts_SpecialCharactersAreTreatedAsLiterals(t *testing.T) {
+	db := setupDB(t)
+	repo := NewSearchRepository(db)
+	ctx := testCtx()
+	user := createUser(t, db, "taro")
+	createPost(t, db, user.ID, "割引は50%です")
+	createPost(t, db, user.ID, "全然関係ない投稿")
+
+	// "%" はワイルドカードではなくリテラルとして扱われるため1件だけ一致する
+	percent, _, err := repo.SearchPosts(ctx, "50%", nil, 20)
+	require.NoError(t, err)
+	require.Len(t, percent, 1)
+	assert.Contains(t, percent[0].Content, "50%")
+
+	// SQLインジェクションを狙った文字列でもエラーにならず0件になる
+	injection, _, err := repo.SearchPosts(ctx, "' OR 1=1 --", nil, 20)
+	require.NoError(t, err)
+	assert.Empty(t, injection)
+
+	// 1文字のワイルドカード "_" も同様にリテラル扱い
+	underscore, _, err := repo.SearchPosts(ctx, "_", nil, 20)
+	require.NoError(t, err)
+	assert.Empty(t, underscore)
+
+	// "%" 1文字では全件ではなく、本文に"%"を含む投稿だけが一致する
+	wildcard, _, err := repo.SearchPosts(ctx, "%", nil, 20)
+	require.NoError(t, err)
+	require.Len(t, wildcard, 1)
+	assert.Contains(t, wildcard[0].Content, "%")
+}
+
+// TestSearchRepository_SearchUsers_WildcardIsEscaped はユーザー検索でも
+// LIKEワイルドカードがリテラルとして扱われることを検証する
+func TestSearchRepository_SearchUsers_WildcardIsEscaped(t *testing.T) {
+	db := setupDB(t)
+	repo := NewSearchRepository(db)
+	ctx := testCtx()
+	createUser(t, db, "taro_dev")
+	createUser(t, db, "hanako")
+
+	// "_" を含むハンドルはリテラル一致する
+	matched, _, err := repo.SearchUsers(ctx, "taro_dev", nil, 20)
+	require.NoError(t, err)
+	require.Len(t, matched, 1)
+	assert.Equal(t, "taro_dev", matched[0].Handle)
+
+	// "_" 単体では誰にも一致しない（ワイルドカード扱いされない）
+	none, _, err := repo.SearchUsers(ctx, "%", nil, 20)
+	require.NoError(t, err)
+	assert.Empty(t, none)
+}
+
+// TestSearchRepository_SearchPosts_EmptyAndVeryLongQuery は
+// 空文字と極端に長い検索語でも落ちないことを検証する
+func TestSearchRepository_SearchPosts_EmptyAndVeryLongQuery(t *testing.T) {
+	db := setupDB(t)
+	repo := NewSearchRepository(db)
+	ctx := testCtx()
+	user := createUser(t, db, "taro")
+	createPost(t, db, user.ID, "検索対象の投稿")
+
+	// 空文字は "%%" になり全件一致する（ハンドラー層で事前に弾く想定）
+	all, _, err := repo.SearchPosts(ctx, "", nil, 20)
+	require.NoError(t, err)
+	assert.Len(t, all, 1)
+
+	// 投稿本文の上限（280文字）を超える検索語でもエラーにならず0件
+	long, _, err := repo.SearchPosts(ctx, strings.Repeat("あ", 1000), nil, 20)
+	require.NoError(t, err)
+	assert.Empty(t, long)
+}
+
+// TestPostRepository_Create_MaxLengthContent は280文字ちょうどの本文が保存できることを検証する
+func TestPostRepository_Create_MaxLengthContent(t *testing.T) {
+	db := setupDB(t)
+	repo := NewPostRepository(db)
+	ctx := testCtx()
+	user := createUser(t, db, "taro")
+
+	content := strings.Repeat("あ", 280)
+	post := &model.Post{UserID: user.ID, Content: content}
+	require.NoError(t, repo.Create(ctx, post))
+
+	found, err := repo.FindByID(ctx, post.ID)
+	require.NoError(t, err)
+	assert.Equal(t, content, found.Content)
+	assert.Equal(t, 280, len([]rune(found.Content)))
 }

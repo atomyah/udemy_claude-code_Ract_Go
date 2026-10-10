@@ -80,3 +80,8 @@ export const unbookmark = (id: string): Promise<void> => api.delete(`/posts/${id
 
 export const getBookmarks = ({ cursor, limit = 20 }: PageParams): Promise<PostListResponse> =>
   api.get<PostListResponse>('/bookmarks', { params: { cursor, limit } }).then((res) => res.data);
+
+export const getHashtagPosts = (tag: string, { cursor, limit = 20 }: PageParams): Promise<PostListResponse> =>
+  api
+    .get<PostListResponse>(`/search/hashtags/${encodeURIComponent(tag)}`, { params: { cursor, limit } })
+    .then((res) => res.data);

@@ -1,17 +1,7 @@
-import {
-  Alert,
-  Avatar,
-  Box,
-  Button,
-  Chip,
-  Stack,
-  Tab,
-  Tabs,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Avatar, Box, Button, Chip, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
 import { useEffect, useRef, useState } from 'react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { useToast } from '../components/ToastProvider';
 import { useAdminDeletePost } from '../features/admin/hooks/useAdminDeletePost';
 import { useAdminUsers } from '../features/admin/hooks/useAdminUsers';
 import { useSuspendUser } from '../features/admin/hooks/useSuspendUser';
@@ -20,6 +10,7 @@ import { getApiErrorMessage } from '../utils/apiError';
 const UserManagementTab = () => {
   const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = useAdminUsers();
   const suspendMutation = useSuspendUser();
+  const { showToast } = useToast();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const users = data?.pages.flatMap((page) => page.data ?? []) ?? [];
@@ -64,7 +55,17 @@ const UserManagementTab = () => {
             variant="outlined"
             disabled={suspendMutation.isPending}
             onClick={() =>
-              suspendMutation.mutate({ id: user.id ?? '', isSuspended: user.is_suspended ?? false })
+              suspendMutation.mutate(
+                { id: user.id ?? '', isSuspended: user.is_suspended ?? false },
+                {
+                  onSuccess: () =>
+                    showToast(
+                      user.is_suspended ? 'ユーザーの停止を解除しました' : 'ユーザーを停止しました',
+                      'success',
+                    ),
+                  onError: (error) => showToast(getApiErrorMessage(error, '操作に失敗しました'), 'error'),
+                },
+              )
             }
           >
             {user.is_suspended ? '停止解除' : '停止'}
@@ -80,6 +81,7 @@ const UserManagementTab = () => {
 const PostManagementTab = () => {
   const [postId, setPostId] = useState('');
   const deleteMutation = useAdminDeletePost();
+  const { showToast } = useToast();
 
   return (
     <Box sx={{ maxWidth: 480 }}>
@@ -98,21 +100,19 @@ const PostManagementTab = () => {
           variant="contained"
           color="error"
           disabled={!postId || deleteMutation.isPending}
-          onClick={() => deleteMutation.mutate(postId, { onSuccess: () => setPostId('') })}
+          onClick={() =>
+            deleteMutation.mutate(postId, {
+              onSuccess: () => {
+                setPostId('');
+                showToast('投稿を削除しました', 'success');
+              },
+              onError: (error) => showToast(getApiErrorMessage(error, '削除に失敗しました'), 'error'),
+            })
+          }
         >
           削除
         </Button>
       </Stack>
-      {deleteMutation.isError && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {getApiErrorMessage(deleteMutation.error, '削除に失敗しました')}
-        </Alert>
-      )}
-      {deleteMutation.isSuccess && (
-        <Alert severity="success" sx={{ mt: 2 }}>
-          投稿を削除しました
-        </Alert>
-      )}
     </Box>
   );
 };

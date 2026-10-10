@@ -173,7 +173,7 @@ func TestUserService_GetFollowersAndFollowing(t *testing.T) {
 	followRepo.On("CountFollowers", mock.Anything, follower.ID).Return(0, nil)
 	followRepo.On("CountFollowing", mock.Anything, follower.ID).Return(0, nil)
 
-	svc := NewUserService(userRepo, followRepo)
+	svc := NewUserService(userRepo, followRepo, new(mockNotificationSvc))
 
 	followers, err := svc.GetFollowers(context.Background(), "taro", nil, "", 20)
 	require.NoError(t, err)
@@ -201,7 +201,7 @@ func TestPostService_GetUserPostsAndComments(t *testing.T) {
 	postRepo.On("GetComments", mock.Anything, postID, (*time.Time)(nil), 20).Return([]model.Post{}, nil, nil)
 	expectCounts(postRepo, likeRepo, bookmarkRepo, postID)
 
-	svc := NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), userRepo, likeRepo, bookmarkRepo, new(mockStorageSvc))
+	svc := NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), userRepo, likeRepo, bookmarkRepo, new(mockStorageSvc), new(mockNotificationSvc))
 
 	posts, err := svc.GetUserPosts(context.Background(), handle, nil, "", 20)
 	require.NoError(t, err)

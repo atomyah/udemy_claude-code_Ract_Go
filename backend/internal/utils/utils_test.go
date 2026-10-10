@@ -79,3 +79,24 @@ func TestExtractHashtags(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractMentions(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{name: "メンションなし", content: "こんにちは", want: nil},
+		{name: "1件のメンション", content: "@taro ありがとう", want: []string{"taro"}},
+		{name: "複数のメンション", content: "@taro と @hanako_01 へ", want: []string{"taro", "hanako_01"}},
+		{name: "重複は1つにまとめる", content: "@taro @taro @hanako", want: []string{"taro", "hanako"}},
+		{name: "日本語はハンドルに含めない", content: "@太郎 さん", want: nil},
+		{name: "メールアドレスのドメイン部は拾わない", content: "taro@example.com", want: []string{"example"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, ExtractMentions(tt.content))
+		})
+	}
+}

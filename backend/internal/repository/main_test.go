@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/atyahara/sns-backend/internal/model"
@@ -43,18 +44,50 @@ func TestMain(m *testing.M) {
 
 // setupDB はテストごとに全テーブルを空にしたDBハンドルを返す。
 // DATABASE_URLが無い環境ではテストをスキップする。
+//
+// 注意: 全テーブルをTRUNCATEするため、このパッケージのテストは直列実行が前提。
+// t.Parallel() を呼ぶと他のテストのデータを消してしまうので、
+// 誤って並列化された場合はここで気づけるよう明示的に失敗させる。
 func setupDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
 	if testDB == nil {
 		t.Skip("DATABASE_URL が未設定のためスキップ（make test-backend で実行してください）")
 	}
+	assertNotParallel(t)
 
 	err := testDB.Exec(`TRUNCATE notifications, post_hashtags, hashtags, bookmarks, likes, follows, media, posts, users RESTART IDENTITY CASCADE`).Error
 	if err != nil {
 		t.Fatalf("テストデータのクリア失敗: %v", err)
 	}
 	return testDB
+}
+
+var (
+	activeMu   sync.Mutex
+	activeTest string
+)
+
+// assertNotParallel は同時に2つ以上のテストがテストDBを使っていないことを確認する。
+// TRUNCATEで全テーブルを消すため、並列実行されると他方のテストデータが消えて
+// 原因の分かりにくい失敗になる。それを即座に検出する。
+func assertNotParallel(t *testing.T) {
+	t.Helper()
+
+	activeMu.Lock()
+	if activeTest != "" && activeTest != t.Name() {
+		running := activeTest
+		activeMu.Unlock()
+		t.Fatalf("リポジトリテストは直列実行が前提です（%s と並列実行されました）。t.Parallel() を外してください", running)
+	}
+	activeTest = t.Name()
+	activeMu.Unlock()
+
+	t.Cleanup(func() {
+		activeMu.Lock()
+		activeTest = ""
+		activeMu.Unlock()
+	})
 }
 
 // createUser はテスト用ユーザーを作成する

@@ -281,3 +281,115 @@ func TestPostHandler_CreateComment_ParentNotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 	assert.Equal(t, "投稿が見つかりません", decodeErrorResponse(t, rec).Message)
 }
+
+// TestPostHandler_CreatePost_ContentBoundary は投稿本文の文字数境界を検証する
+func TestPostHandler_CreatePost_ContentBoundary(t *testing.T) {
+	tests := []struct {
+		name       string
+		content    string
+		wantStatus int
+		wantMsg    string
+	}{
+		{name: "1文字は投稿できる", content: "あ", wantStatus: http.StatusCreated},
+		{name: "280文字ちょうどは投稿できる", content: strings.Repeat("あ", 280), wantStatus: http.StatusCreated},
+		{
+			name:       "281文字は拒否される",
+			content:    strings.Repeat("あ", 281),
+			wantStatus: http.StatusBadRequest,
+			wantMsg:    "本文は280文字以内で入力してください",
+		},
+		{
+			name:       "空文字は拒否される",
+			content:    "",
+			wantStatus: http.StatusBadRequest,
+			wantMsg:    "本文を入力してください",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userID := uuid.New()
+			postSvc := new(mockPostSvc)
+			postSvc.On("CreatePost", mock.Anything, userID, tt.content, mock.Anything).
+				Return(&dto.PostResponse{ID: uuid.NewString(), Content: tt.content}, nil)
+
+			c, rec := newFormContext(t, http.MethodPost, "/api/v1/posts", map[string]string{"content": tt.content})
+			withAuth(c, userID)
+
+			require.NoError(t, NewPostHandler(postSvc, new(mockCommentSvc)).CreatePost(c))
+
+			assert.Equal(t, tt.wantStatus, rec.Code)
+			if tt.wantMsg == "" {
+				// サービスには入力どおりの本文が渡る
+				postSvc.AssertExpectations(t)
+				var body dto.PostResponse
+				decodeJSON(t, rec, &body)
+				assert.Equal(t, tt.content, body.Content)
+			} else {
+				assert.Equal(t, tt.wantMsg, decodeErrorResponse(t, rec).Message)
+				postSvc.AssertNotCalled(t, "CreatePost", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
+// TestPostHandler_CreatePost_SpecialCharactersArePassedThrough は
+// 絵文字・改行・HTMLタグ風の文字列がエスケープされずそのままサービスへ渡ることを検証する
+// （サニタイズはせず、表示側のエスケープに任せる方針のため）
+func TestPostHandler_CreatePost_SpecialCharactersArePassedThrough(t *testing.T) {
+	content := "<script>alert('x')</script>\n絵文字🎉 と \"引用\" と #タグ"
+	userID := uuid.New()
+	postSvc := new(mockPostSvc)
+	postSvc.On("CreatePost", mock.Anything, userID, content, mock.Anything).
+		Return(&dto.PostResponse{ID: uuid.NewString(), Content: content}, nil)
+
+	c, rec := newFormContext(t, http.MethodPost, "/api/v1/posts", map[string]string{"content": content})
+	withAuth(c, userID)
+
+	require.NoError(t, NewPostHandler(postSvc, new(mockCommentSvc)).CreatePost(c))
+
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	var body dto.PostResponse
+	decodeJSON(t, rec, &body)
+	assert.Equal(t, content, body.Content)
+	postSvc.AssertExpectations(t)
+}
+
+// TestPostHandler_CreatePost_FileTooLarge_ReturnsJapaneseMessage は
+// サイズ上限（画像5MB・動画100MB）を超えたメディアが400と日本語メッセージで返ることを検証する
+func TestPostHandler_CreatePost_FileTooLarge_ReturnsJapaneseMessage(t *testing.T) {
+	userID := uuid.New()
+	postSvc := new(mockPostSvc)
+	postSvc.On("CreatePost", mock.Anything, userID, mock.Anything, mock.Anything).
+		Return(nil, service.ErrFileTooLarge)
+
+	c, rec := newFormContext(t, http.MethodPost, "/api/v1/posts", map[string]string{"content": "大きい画像"})
+	withAuth(c, userID)
+
+	require.NoError(t, NewPostHandler(postSvc, new(mockCommentSvc)).CreatePost(c))
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	body := decodeErrorResponse(t, rec)
+	assert.Equal(t, "VALIDATION_ERROR", body.Code)
+	assert.Equal(t, "ファイルサイズが上限を超えています", body.Message)
+}
+
+// TestPostHandler_CreateComment_FileTooLarge_ReturnsJapaneseMessage は
+// コメントの添付ファイルでも同じ扱いになることを検証する
+func TestPostHandler_CreateComment_FileTooLarge_ReturnsJapaneseMessage(t *testing.T) {
+	userID := uuid.New()
+	postID := uuid.New()
+	commentSvc := new(mockCommentSvc)
+	commentSvc.On("CreateComment", mock.Anything, userID, postID, mock.Anything, mock.Anything).
+		Return(nil, service.ErrFileTooLarge)
+
+	c, rec := newFormContext(t, http.MethodPost, "/api/v1/posts/"+postID.String()+"/comments",
+		map[string]string{"content": "大きい画像つきコメント"})
+	withAuth(c, userID)
+	withParam(c, []string{"id"}, []string{postID.String()})
+
+	require.NoError(t, NewPostHandler(new(mockPostSvc), commentSvc).CreateComment(c))
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, "ファイルサイズが上限を超えています", decodeErrorResponse(t, rec).Message)
+}

@@ -44,6 +44,25 @@ func newFormContext(t *testing.T, method, target string, fields map[string]strin
 	return e.NewContext(req, rec), rec
 }
 
+// newFileFormContext は1件のファイルを添付したmultipart/form-dataのechoコンテキストを生成する
+func newFileFormContext(t *testing.T, method, target, field, filename string, content []byte) (echo.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile(field, filename)
+	require.NoError(t, err)
+	_, err = part.Write(content)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	e := echo.New()
+	req := httptest.NewRequest(method, target, body)
+	req.Header.Set(echo.HeaderContentType, writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	return e.NewContext(req, rec), rec
+}
+
 // withAuth は認証済みユーザーをコンテキストにセットする（JWTミドルウェア通過後の状態を再現）
 func withAuth(c echo.Context, userID uuid.UUID) echo.Context {
 	c.Set("userID", userID)

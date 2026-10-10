@@ -152,7 +152,7 @@ cd frontend && npm run gen:api
 
 1. **要件の洗い出しを先に行う**: 実装に着手する前に、依頼された要件をすべて箇条書きで列挙すること。実装後はその一覧と照合し、**1 つも漏らさず実装されているか確認する**。
 2. **環境別の動作要件を必ず実装する**: 「本番環境でのみ有効」「開発環境では無効」といった環境差分の要件は、必ずコードとして実装すること（例: Swagger UI は `ENV=development` のときだけ公開する、`AutoMigrate` は development / test のみ実行する）。判断は `config.Config` の `IsDevelopment()` / `IsTest()` / `IsProduction()` / `ShouldAutoMigrate()` で行う。
-3. **新機能にはテストを書く**: 新しいハンドラー・サービス・リポジトリ・画面を実装したら、対応するテスト（バックエンド単体テスト／E2E テスト）も必ず同じ変更内で追加する。テストのない機能追加はしない。
+3. **新機能にはテストを書く**: 新しいハンドラー・サービス・リポジトリ・画面を実装したら、対応するテスト（バックエンド単体テスト／フロントエンド単体テスト／E2E テスト）も必ず同じ変更内で追加する。テストのない機能追加はしない。
 4. **エラーメッセージはユーザー向けの日本語にする**: バリデーションエラーを含め、API が返す `message` は利用者が読んで理解できる日本語であること。`validator` の生エラー文字列をそのまま返さず、`handler.validationMessage()` を通す。
 
 ---
@@ -182,8 +182,9 @@ make dev-logs      # 開発環境のログ
 make test-setup    # テスト環境を起動（profile: test）
 make test-teardown # テスト環境を停止・削除
 make test-backend  # テスト環境起動 → バックエンド単体テスト → テスト環境停止
+make test-frontend # フロントエンド単体テスト（Vitest）。テスト環境は不要
 make test-e2e      # テスト環境起動 → E2E テスト → テスト環境停止
-make test          # test-backend と test-e2e を両方実行
+make test          # test-backend / test-frontend / test-e2e をすべて実行
 ```
 
 - テストを直接 `go test` や `npx playwright test` で叩かず、**必ず Makefile 経由**で実行する。
@@ -218,6 +219,15 @@ docker compose exec api go test ./...
 - モックは `testify/mock` で各パッケージの `mocks_test.go` に定義する。
 - カバレッジ目標は **60% 以上**（`internal/` 配下）。`make test-backend` の最後に集計値が表示される。
 
+### フロントエンド単体テスト（Vitest）
+
+- 対象: コンポーネントの表示制御（ボタンの有効 / 無効、権限による表示差分）とカスタムフック・Context の状態遷移。
+- 配置: テスト対象と同じディレクトリに `*.test.tsx` / `*.test.ts` を置く。
+- Provider が必要なコンポーネントは `src/test/renderWithProviders.tsx` を使う（QueryClient / Router / Toast を適用する）。`AuthContext` など差し替えたい依存は `vi.mock` する。
+- API 通信はフック単位で `vi.mock` して遮断する。実際のバックエンドには接続しない。
+- **テスト名は日本語**で書く（例: `test('本文が空のときは投稿ボタンが disabled になる', ...)`）。
+- E2E（`e2e/`）は Vitest の対象外（`vite.config.ts` で除外済み）。
+
 ### E2E テスト（Playwright）
 
 - 配置: `frontend/e2e/*.spec.ts`、共通処理は `frontend/e2e/helpers.ts`。
@@ -225,3 +235,23 @@ docker compose exec api go test ./...
 - **テスト名は日本語**で書く（例: `test('投稿するとタイムラインに表示される', ...)`）。
 - **セレクタは `data-testid` 属性のみ**を使う（`getByTestId`）。必要な `data-testid` はコンポーネント側に追加する。
 - 入力値はバックエンドのバリデーションを満たすものにする（パスワード 8〜72 文字、ハンドル 3〜50 文字の英数字とアンダースコア、投稿本文 1〜280 文字）。
+
+---
+
+## CI（GitHub Actions）
+
+ワークフロー: `.github/workflows/ci.yml`（`main` への push / Pull Request で実行）
+
+| ジョブ | 内容 |
+|-------|------|
+| `backend-test` | PostgreSQL サービスコンテナ → `go run ./cmd/migrate` → `go test -v -parallel 2 -cover ./...` |
+| `frontend-build` | `npm ci` → `npm run gen:api` → `npm run build` |
+| `e2e-test` | PostgreSQL → API サーバーを `:8081` で起動し `/health` で起動待ち → `npx playwright test`（失敗時はレポート・スクリーンショットをアーティファクトに保存） |
+
+- DB 設定・環境変数はローカルのテスト環境（`db_test` / `backend/.env.test`）と同じ値を `ci.yml` の `env` に直接定義している。テスト用の設定を変えたら `ci.yml` も合わせて更新すること。
+- `frontend/src/api/generated/` は gitignore 対象のため、CI では `backend/docs/openapi.yaml` から型を生成する。**ハンドラーを変更したら `docs/` を再生成してコミットすること**（古いままだと CI のビルドが通らない）。
+
+### CI ルール（必ず守ること）
+
+1. **`main` へのマージ前に CI のジョブがすべてグリーンであること。** 失敗したまま・実行中のままマージしない。
+2. **CI で実行されるテストがローカルでも通ることを確認してから push すること。** push 前に `make test`（少なくとも変更範囲に対応する `make test-backend` / `make test-e2e`）と `cd frontend && npm run build` を実行する。

@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/atyahara/sns-backend/internal/dto"
@@ -256,3 +258,105 @@ func TestAuthHandler_GoogleLogin_InvalidIDToken_Returns401(t *testing.T) {
 
 // echoのインターフェース互換性を保証する（コンパイル時チェック）
 var _ echo.HandlerFunc = (&AuthHandler{}).Register
+
+// ============================================================
+// 境界値テスト（登録バリデーション）
+// ============================================================
+
+func TestAuthHandler_Register_BoundaryValues(t *testing.T) {
+	tests := []struct {
+		name       string
+		password   string
+		handle     string
+		wantStatus int
+		wantMsg    string
+	}{
+		{
+			name:       "パスワード8文字ちょうどは登録できる",
+			password:   strings.Repeat("a", 8),
+			handle:     "taro",
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "パスワード7文字は拒否される",
+			password:   strings.Repeat("a", 7),
+			handle:     "taro",
+			wantStatus: http.StatusBadRequest,
+			wantMsg:    "パスワードは8文字以上で入力してください",
+		},
+		{
+			name:       "パスワード72文字ちょうどは登録できる",
+			password:   strings.Repeat("a", 72),
+			handle:     "taro",
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "パスワード73文字は拒否される",
+			password:   strings.Repeat("a", 73),
+			handle:     "taro",
+			wantStatus: http.StatusBadRequest,
+			wantMsg:    "パスワードは72文字以内で入力してください",
+		},
+		{
+			name:       "ハンドル3文字ちょうどは登録できる",
+			password:   "password123",
+			handle:     "abc",
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "ハンドル50文字ちょうどは登録できる",
+			password:   "password123",
+			handle:     strings.Repeat("a", 50),
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "ハンドル51文字は拒否される",
+			password:   "password123",
+			handle:     strings.Repeat("a", 51),
+			wantStatus: http.StatusBadRequest,
+			wantMsg:    "ユーザーIDは50文字以内で入力してください",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := new(mockAuthSvc)
+			svc.On("Register", mock.Anything, mock.Anything).Return(sampleAuthResult(), nil)
+
+			body := fmt.Sprintf(`{"email":"taro@example.com","password":%q,"handle":%q,"display_name":"タロウ"}`,
+				tt.password, tt.handle)
+			c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register", body)
+
+			require.NoError(t, NewAuthHandler(svc).Register(c))
+
+			assert.Equal(t, tt.wantStatus, rec.Code)
+			if tt.wantMsg != "" {
+				assert.Equal(t, tt.wantMsg, decodeErrorResponse(t, rec).Message)
+				svc.AssertNotCalled(t, "Register", mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
+// TestAuthHandler_Register_MultibytePasswordExceedingBcryptLimit は
+// 「72文字以内だがbcryptの72バイト上限を超える」パスワードが
+// 500ではなく400と日本語メッセージで返ることを検証する。
+func TestAuthHandler_Register_MultibytePasswordExceedingBcryptLimit(t *testing.T) {
+	svc := new(mockAuthSvc)
+	svc.On("Register", mock.Anything, mock.Anything).Return(nil, service.ErrPasswordTooLong)
+
+	// ひらがな30文字 = 90バイト（文字数バリデーションは通過する）
+	password := strings.Repeat("ぱ", 30)
+	require.LessOrEqual(t, len([]rune(password)), 72)
+	require.Greater(t, len(password), 72)
+
+	body := fmt.Sprintf(`{"email":"taro@example.com","password":%q,"handle":"taro","display_name":"タロウ"}`, password)
+	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register", body)
+
+	require.NoError(t, NewAuthHandler(svc).Register(c))
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	errBody := decodeErrorResponse(t, rec)
+	assert.Equal(t, "VALIDATION_ERROR", errBody.Code)
+	assert.Contains(t, errBody.Message, "パスワードが長すぎます")
+}

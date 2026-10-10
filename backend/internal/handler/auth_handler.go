@@ -56,6 +56,8 @@ func (h *AuthHandler) Register(c echo.Context) error {
 			return c.JSON(http.StatusConflict, dto.ErrorResponse{Code: "EMAIL_TAKEN", Message: "このメールアドレスは既に使用されています"})
 		case errors.Is(err, service.ErrHandleTaken):
 			return c.JSON(http.StatusConflict, dto.ErrorResponse{Code: "HANDLE_TAKEN", Message: "このハンドルは既に使用されています"})
+		case errors.Is(err, service.ErrPasswordTooLong):
+			return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: "VALIDATION_ERROR", Message: passwordTooLongMessage})
 		default:
 			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "サーバーエラーが発生しました"})
 		}

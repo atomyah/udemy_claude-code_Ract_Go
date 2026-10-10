@@ -320,3 +320,70 @@ func TestNotificationHandler_MarkAllRead_Success(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 	svc.AssertExpectations(t)
 }
+
+// TestSearchHandler_SearchUsers_QueryLengthBoundary は検索クエリ長の境界を検証する
+func TestSearchHandler_SearchUsers_QueryLengthBoundary(t *testing.T) {
+	tests := []struct {
+		name       string
+		query      string
+		wantStatus int
+	}{
+		{name: "1文字は拒否される", query: "a", wantStatus: http.StatusBadRequest},
+		{name: "2文字ちょうどは検索できる", query: "ab", wantStatus: http.StatusOK},
+		{name: "空文字は拒否される", query: "", wantStatus: http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := new(mockSearchSvc)
+			svc.On("SearchUsers", mock.Anything, tt.query, (*uuid.UUID)(nil), "", 20).
+				Return(&dto.UserListResponse{Data: []dto.UserResponse{}}, nil)
+
+			c, rec := newJSONContext(t, http.MethodGet, "/api/v1/search/users?q="+tt.query, "")
+
+			require.NoError(t, NewSearchHandler(svc).SearchUsers(c))
+
+			assert.Equal(t, tt.wantStatus, rec.Code)
+			if tt.wantStatus == http.StatusBadRequest {
+				assert.Equal(t, "検索クエリは2文字以上で指定してください", decodeErrorResponse(t, rec).Message)
+				svc.AssertNotCalled(t, "SearchUsers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
+// TestSearchHandler_SearchPosts_LimitBoundary はlimitクエリの境界が
+// ハンドラーからサービスへ正しく渡ることを検証する（上限50でクランプされる）
+func TestSearchHandler_SearchPosts_LimitBoundary(t *testing.T) {
+	tests := []struct {
+		name      string
+		rawLimit  string
+		wantLimit int
+	}{
+		{name: "未指定はデフォルト20", rawLimit: "", wantLimit: 20},
+		{name: "1は1件", rawLimit: "1", wantLimit: 1},
+		{name: "50ちょうどはそのまま", rawLimit: "50", wantLimit: 50},
+		{name: "51は50に丸められる", rawLimit: "51", wantLimit: 50},
+		{name: "0はデフォルトに戻る", rawLimit: "0", wantLimit: 20},
+		{name: "数値以外はデフォルトに戻る", rawLimit: "abc", wantLimit: 20},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := new(mockSearchSvc)
+			svc.On("SearchPosts", mock.Anything, "test", (*uuid.UUID)(nil), "", tt.wantLimit).
+				Return(&dto.PostListResponse{Data: []dto.PostResponse{}}, nil)
+
+			target := "/api/v1/search/posts?q=test"
+			if tt.rawLimit != "" {
+				target += "&limit=" + tt.rawLimit
+			}
+			c, rec := newJSONContext(t, http.MethodGet, target, "")
+
+			require.NoError(t, NewSearchHandler(svc).SearchPosts(c))
+
+			assert.Equal(t, http.StatusOK, rec.Code)
+			svc.AssertExpectations(t)
+		})
+	}
+}

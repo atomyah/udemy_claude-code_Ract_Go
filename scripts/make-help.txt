@@ -7,4 +7,5 @@
   make test-teardown : テスト環境を停止・削除（開発環境には影響しない）
   make test-backend  : テスト環境起動 → バックエンド単体テスト実行 → テスト環境停止
   make test-e2e      : テスト環境起動 → E2Eテスト（Playwright）実行 → テスト環境停止
-  make test          : test-backend と test-e2e を両方実行
+  make test-frontend : フロントエンド単体テスト（Vitest）を実行（テスト環境不要）
+  make test          : test-backend / test-frontend / test-e2e をすべて実行

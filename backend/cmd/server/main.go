@@ -82,10 +82,10 @@ func main() {
 		fbApp = nil
 	}
 	authSvc := service.NewAuthService(cfg, userRepo, fbApp)
-	storageSvc := service.NewStorageService(cfg, fbApp)
-	userSvc := service.NewUserService(userRepo, followRepo)
-	postSvc := service.NewPostService(postRepo, mediaRepo, hashtagRepo, userRepo, likeRepo, bookmarkRepo, storageSvc)
 	notificationSvc := service.NewNotificationService(notificationRepo)
+	storageSvc := service.NewStorageService(cfg, fbApp)
+	userSvc := service.NewUserService(userRepo, followRepo, notificationSvc)
+	postSvc := service.NewPostService(postRepo, mediaRepo, hashtagRepo, userRepo, likeRepo, bookmarkRepo, storageSvc, notificationSvc)
 	likeSvc := service.NewLikeService(postRepo, likeRepo, notificationSvc)
 	repostSvc := service.NewRepostService(postRepo, postSvc, notificationSvc)
 	bookmarkSvc := service.NewBookmarkService(postRepo, bookmarkRepo, postSvc)

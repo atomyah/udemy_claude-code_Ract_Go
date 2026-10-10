@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/atyahara/sns-backend/internal/model"
@@ -21,9 +22,20 @@ func NewSearchRepository(db *gorm.DB) SearchRepository {
 	return &searchRepository{db: db}
 }
 
+// likeEscaper はLIKEパターンで特別な意味を持つ文字をエスケープする。
+// プレースホルダはSQLインジェクションを防ぐが、値の中の % と _ は
+// ワイルドカードとして解釈されてしまうため（"_" だけの検索で全件一致するなど）
+// 検索語は常にリテラルとして扱えるようエスケープする。
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+// likePattern は検索語を部分一致のLIKEパターンに変換する
+func likePattern(query string) string {
+	return "%" + likeEscaper.Replace(query) + "%"
+}
+
 // SearchUsers はhandle・display_nameの部分一致でユーザーを検索する（停止ユーザーは除外）
 func (r *searchRepository) SearchUsers(ctx context.Context, query string, cursor *time.Time, limit int) ([]model.User, *time.Time, error) {
-	like := "%" + query + "%"
+	like := likePattern(query)
 	q := r.db.WithContext(ctx).
 		Where("is_suspended = false AND (handle ILIKE ? OR display_name ILIKE ?)", like, like)
 	if cursor != nil {
@@ -45,7 +57,7 @@ func (r *searchRepository) SearchUsers(ctx context.Context, query string, cursor
 
 // SearchPosts は投稿本文の部分一致で検索する（削除済み・停止ユーザーの投稿は除外）
 func (r *searchRepository) SearchPosts(ctx context.Context, query string, cursor *time.Time, limit int) ([]model.Post, *time.Time, error) {
-	like := "%" + query + "%"
+	like := likePattern(query)
 	q := r.db.WithContext(ctx).
 		Model(&model.Post{}).
 		Joins("JOIN users ON users.id = posts.user_id").

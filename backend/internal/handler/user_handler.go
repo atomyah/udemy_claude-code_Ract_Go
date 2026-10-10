@@ -316,6 +316,8 @@ func (h *UserHandler) ChangePassword(c echo.Context) error {
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "INVALID_CREDENTIALS", Message: "パスワードが正しくありません"})
 		case errors.Is(err, service.ErrNoPassword):
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "NO_PASSWORD", Message: "パスワード未設定のアカウントです"})
+		case errors.Is(err, service.ErrPasswordTooLong):
+			return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: "VALIDATION_ERROR", Message: passwordTooLongMessage})
 		default:
 			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "変更に失敗しました"})
 		}

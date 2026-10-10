@@ -32,12 +32,17 @@ type UserService interface {
 }
 
 type userService struct {
-	userRepo   repository.UserRepository
-	followRepo repository.FollowRepository
+	userRepo        repository.UserRepository
+	followRepo      repository.FollowRepository
+	notificationSvc NotificationService
 }
 
-func NewUserService(userRepo repository.UserRepository, followRepo repository.FollowRepository) UserService {
-	return &userService{userRepo: userRepo, followRepo: followRepo}
+func NewUserService(
+	userRepo repository.UserRepository,
+	followRepo repository.FollowRepository,
+	notificationSvc NotificationService,
+) UserService {
+	return &userService{userRepo: userRepo, followRepo: followRepo, notificationSvc: notificationSvc}
 }
 
 func (s *userService) GetProfile(ctx context.Context, handle string, viewerID *uuid.UUID) (*dto.UserResponse, error) {
@@ -105,7 +110,12 @@ func (s *userService) Follow(ctx context.Context, followerID uuid.UUID, handle s
 		return ErrAlreadyFollowed
 	}
 
-	return s.followRepo.Create(ctx, &model.Follow{FollowerID: followerID, FollowingID: target.ID})
+	if err := s.followRepo.Create(ctx, &model.Follow{FollowerID: followerID, FollowingID: target.ID}); err != nil {
+		return err
+	}
+
+	// フォロー通知は特定の投稿に紐づかないためpostIDはnil
+	return s.notificationSvc.Notify(ctx, target.ID, followerID, "follow", nil)
 }
 
 func (s *userService) Unfollow(ctx context.Context, followerID uuid.UUID, handle string) error {
@@ -199,6 +209,9 @@ func (s *userService) ChangePassword(ctx context.Context, userID uuid.UUID, req 
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), 12)
+	if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+		return ErrPasswordTooLong
+	}
 	if err != nil {
 		return err
 	}

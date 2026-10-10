@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/atyahara/sns-backend/internal/dto"
 	appMiddleware "github.com/atyahara/sns-backend/internal/middleware"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -98,6 +100,130 @@ func TestProtectedEndpoint_WithValidToken_PassesAuthentication(t *testing.T) {
 func routerToken(t *testing.T, sub string, exp time.Time) string {
 	t.Helper()
 	claims := jwt.MapClaims{"sub": sub, "role": "user", "exp": exp.Unix(), "iat": time.Now().Unix()}
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(routerTestSecret))
+	require.NoError(t, err)
+	return signed
+}
+
+// newAdminRouter は本番のmain.goと同じ順序でJWT認証 + 管理者ロールチェックを
+// 適用した管理者ルートを組み立てる（ミドルウェアの付け忘れを検出するため）
+func newAdminRouter(t *testing.T, adminSvc *mockAdminSvc) *echo.Echo {
+	t.Helper()
+
+	e := echo.New()
+	v1 := e.Group("/api/v1")
+	adminHandler := NewAdminHandler(adminSvc)
+
+	admin := v1.Group("/admin", appMiddleware.JWTAuth(routerTestSecret), appMiddleware.AdminOnly())
+	admin.DELETE("/posts/:id", adminHandler.AdminDeletePost)
+	admin.PUT("/users/:id/suspend", adminHandler.SuspendUser)
+	admin.DELETE("/users/:id/suspend", adminHandler.UnsuspendUser)
+	admin.GET("/users", adminHandler.ListUsers)
+
+	return e
+}
+
+// adminRoutes は管理者専用エンドポイントの一覧
+func adminRoutes() []struct {
+	method string
+	path   string
+} {
+	id := uuid.New().String()
+	return []struct {
+		method string
+		path   string
+	}{
+		{http.MethodDelete, "/api/v1/admin/posts/" + id},
+		{http.MethodPut, "/api/v1/admin/users/" + id + "/suspend"},
+		{http.MethodDelete, "/api/v1/admin/users/" + id + "/suspend"},
+		{http.MethodGet, "/api/v1/admin/users"},
+	}
+}
+
+func TestAdminEndpoints_WithoutToken_Return401(t *testing.T) {
+	adminSvc := new(mockAdminSvc)
+	e := newAdminRouter(t, adminSvc)
+
+	for _, route := range adminRoutes() {
+		t.Run(route.method+" "+route.path, func(t *testing.T) {
+			req := httptest.NewRequest(route.method, route.path, nil)
+			rec := httptest.NewRecorder()
+
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusUnauthorized, rec.Code)
+			assert.Equal(t, "MISSING_TOKEN", decodeErrorResponse(t, rec).Code)
+		})
+	}
+
+	// 認可で弾かれるのでサービス層は一切呼ばれない
+	adminSvc.AssertExpectations(t)
+}
+
+func TestAdminEndpoints_WithNormalUserToken_Return403(t *testing.T) {
+	adminSvc := new(mockAdminSvc)
+	e := newAdminRouter(t, adminSvc)
+	token := routerTokenWithRole(t, uuid.New().String(), "user", time.Now().Add(15*time.Minute))
+
+	for _, route := range adminRoutes() {
+		t.Run(route.method+" "+route.path, func(t *testing.T) {
+			req := httptest.NewRequest(route.method, route.path, nil)
+			req.Header.Set(echo.HeaderAuthorization, "Bearer "+token)
+			rec := httptest.NewRecorder()
+
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusForbidden, rec.Code)
+			body := decodeErrorResponse(t, rec)
+			assert.Equal(t, "FORBIDDEN", body.Code)
+			assert.Equal(t, "管理者権限が必要です", body.Message)
+		})
+	}
+
+	adminSvc.AssertExpectations(t)
+}
+
+func TestAdminEndpoint_WithAdminToken_ReachesHandler(t *testing.T) {
+	postID := uuid.New()
+	adminSvc := new(mockAdminSvc)
+	adminSvc.On("ForceDeletePost", mock.Anything, postID).Return(nil)
+	e := newAdminRouter(t, adminSvc)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/posts/"+postID.String(), nil)
+	req.Header.Set(echo.HeaderAuthorization,
+		"Bearer "+routerTokenWithRole(t, uuid.New().String(), "admin", time.Now().Add(15*time.Minute)))
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+	adminSvc.AssertExpectations(t)
+}
+
+// TestOptionalAuthEndpoint_WithoutToken_Returns200 は
+// 任意認証のエンドポイントがトークンなしでも閲覧できることを検証する
+func TestOptionalAuthEndpoint_WithoutToken_Returns200(t *testing.T) {
+	postSvc := new(mockPostSvc)
+	postSvc.On("GetExploreTimeline", mock.Anything, (*uuid.UUID)(nil), "", 20).
+		Return(&dto.PostListResponse{Data: []dto.PostResponse{}}, nil)
+
+	e := echo.New()
+	v1 := e.Group("/api/v1")
+	v1.GET("/posts", NewPostHandler(postSvc, new(mockCommentSvc)).GetExplore,
+		appMiddleware.OptionalJWTAuth(routerTestSecret))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/posts", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	postSvc.AssertExpectations(t)
+}
+
+func routerTokenWithRole(t *testing.T, sub, role string, exp time.Time) string {
+	t.Helper()
+	claims := jwt.MapClaims{"sub": sub, "role": role, "exp": exp.Unix(), "iat": time.Now().Unix()}
 	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(routerTestSecret))
 	require.NoError(t, err)
 	return signed

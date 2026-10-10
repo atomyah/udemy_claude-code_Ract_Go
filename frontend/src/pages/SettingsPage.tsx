@@ -1,7 +1,6 @@
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import {
-  Alert,
   Box,
   Button,
   Card,
@@ -14,6 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useState } from 'react';
+import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../features/auth/AuthContext';
 import { useChangeEmail } from '../features/settings/hooks/useChangeEmail';
 import { useChangePassword } from '../features/settings/hooks/useChangePassword';
@@ -23,6 +23,7 @@ import { getApiErrorMessage } from '../utils/apiError';
 const SettingsPage = () => {
   const { currentUser } = useAuth();
   const { mode, toggleTheme } = useThemeMode();
+  const { showToast } = useToast();
 
   const [newEmail, setNewEmail] = useState('');
   const [emailPassword, setEmailPassword] = useState('');
@@ -35,14 +36,28 @@ const SettingsPage = () => {
   const handleChangeEmail = () => {
     changeEmailMutation.mutate(
       { new_email: newEmail, current_password: emailPassword },
-      { onSuccess: () => { setNewEmail(''); setEmailPassword(''); } },
+      {
+        onSuccess: () => {
+          setNewEmail('');
+          setEmailPassword('');
+          showToast('メールアドレスを変更しました', 'success');
+        },
+        onError: (error) => showToast(getApiErrorMessage(error, '変更に失敗しました'), 'error'),
+      },
     );
   };
 
   const handleChangePassword = () => {
     changePasswordMutation.mutate(
       { current_password: currentPassword, new_password: newPassword },
-      { onSuccess: () => { setCurrentPassword(''); setNewPassword(''); } },
+      {
+        onSuccess: () => {
+          setCurrentPassword('');
+          setNewPassword('');
+          showToast('パスワードを変更しました', 'success');
+        },
+        onError: (error) => showToast(getApiErrorMessage(error, '変更に失敗しました'), 'error'),
+      },
     );
   };
 
@@ -99,10 +114,6 @@ const SettingsPage = () => {
               onChange={(e) => setEmailPassword(e.target.value)}
               fullWidth
             />
-            {changeEmailMutation.isError && (
-              <Alert severity="error">{getApiErrorMessage(changeEmailMutation.error, '変更に失敗しました')}</Alert>
-            )}
-            {changeEmailMutation.isSuccess && <Alert severity="success">メールアドレスを変更しました</Alert>}
             <Button
               variant="contained"
               onClick={handleChangeEmail}
@@ -135,10 +146,6 @@ const SettingsPage = () => {
               onChange={(e) => setNewPassword(e.target.value)}
               fullWidth
             />
-            {changePasswordMutation.isError && (
-              <Alert severity="error">{getApiErrorMessage(changePasswordMutation.error, '変更に失敗しました')}</Alert>
-            )}
-            {changePasswordMutation.isSuccess && <Alert severity="success">パスワードを変更しました</Alert>}
             <Button
               variant="contained"
               onClick={handleChangePassword}

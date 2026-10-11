@@ -106,6 +106,9 @@ func main() {
 	// ============================================================
 	e := echo.New()
 	e.HideBanner = true
+	// c.RealIP()（レートリミット・アクセスログ）で使うクライアントIPの取得方法。
+	// Echo 既定の X-Forwarded-For 先頭は偽装できるため、信頼するプロキシ段数で右端から取る
+	e.IPExtractor = appMiddleware.ClientIPExtractor(cfg.TrustedProxyHops)
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
@@ -117,6 +120,13 @@ func main() {
 		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAuthorization},
 		AllowCredentials: true,
+		// フロントエンドがレート制限の状態を読めるようにする
+		ExposeHeaders: []string{
+			appMiddleware.HeaderRateLimitLimit,
+			appMiddleware.HeaderRateLimitRemaining,
+			appMiddleware.HeaderRateLimitReset,
+			echo.HeaderRetryAfter,
+		},
 	}))
 
 	if cfg.IsDevelopment() {
@@ -136,60 +146,70 @@ func main() {
 	optionalAuthMiddleware := appMiddleware.OptionalJWTAuth(cfg.JWTSecret)
 	adminMiddleware := appMiddleware.AdminOnly()
 
+	// レートリミット（インメモリ・fixed window。Cloud Run の max instances = 1 構成が前提）
+	// 認証系: IP 単位で API ごとに 5 回/分。一般: 認証済みはユーザーID・未認証は IP 単位で API ごとに 60 回/分
+	authRateLimit := appMiddleware.AuthRateLimit(cfg.AuthRateLimit)
+	generalRateLimit := appMiddleware.GeneralRateLimit(cfg.GeneralRateLimit)
+
 	// --- 認証（認証不要） ---
+	// ログイン・登録（Google ログインを含む）は認証系のレート制限。パスワードリセットAPIを追加する場合も authRateLimit を付ける
 	auth := v1.Group("/auth")
-	auth.POST("/register", authHandler.Register)
-	auth.POST("/login", authHandler.Login)
-	auth.POST("/logout", authHandler.Logout)
-	auth.POST("/refresh", authHandler.Refresh)
-	auth.POST("/google", authHandler.GoogleLogin)
+	auth.POST("/register", authHandler.Register, authRateLimit)
+	auth.POST("/login", authHandler.Login, authRateLimit)
+	auth.POST("/google", authHandler.GoogleLogin, authRateLimit)
+	auth.POST("/logout", authHandler.Logout, generalRateLimit)
+	auth.POST("/refresh", authHandler.Refresh, generalRateLimit)
+
+	// 認証系以外のAPI。トークンがあれば先に userID を確定させ、ユーザーID単位でレート制限する。
+	// 無効なトークンのリクエストも IP 単位で制限されるよう、必須認証（jwtMiddleware）はレート制限の後に置く
+	api := v1.Group("", optionalAuthMiddleware, generalRateLimit)
 
 	// --- ユーザー（一部認証必要） ---
-	v1.GET("/users/me", userHandler.GetMe, jwtMiddleware)
-	v1.PUT("/users/me", userHandler.UpdateProfile, jwtMiddleware)
-	v1.PUT("/users/me/avatar", userHandler.UpdateAvatar, jwtMiddleware)
-	v1.PUT("/users/me/banner", userHandler.UpdateBanner, jwtMiddleware)
-	v1.PUT("/users/me/theme", userHandler.UpdateTheme, jwtMiddleware)
-	v1.PUT("/users/me/email", userHandler.ChangeEmail, jwtMiddleware)
-	v1.PUT("/users/me/password", userHandler.ChangePassword, jwtMiddleware)
-	v1.GET("/users/:handle", userHandler.GetProfile, optionalAuthMiddleware)
-	v1.GET("/users/:handle/posts", userHandler.GetUserPosts, optionalAuthMiddleware)
-	v1.GET("/users/:handle/replies", userHandler.GetUserReplies, optionalAuthMiddleware)
-	v1.GET("/users/:handle/followers", userHandler.GetFollowers, optionalAuthMiddleware)
-	v1.GET("/users/:handle/following", userHandler.GetFollowing, optionalAuthMiddleware)
-	v1.POST("/users/:handle/follow", userHandler.Follow, jwtMiddleware)
-	v1.DELETE("/users/:handle/follow", userHandler.Unfollow, jwtMiddleware)
+	api.GET("/users/me", userHandler.GetMe, jwtMiddleware)
+	api.PUT("/users/me", userHandler.UpdateProfile, jwtMiddleware)
+	api.PUT("/users/me/avatar", userHandler.UpdateAvatar, jwtMiddleware)
+	api.PUT("/users/me/banner", userHandler.UpdateBanner, jwtMiddleware)
+	api.PUT("/users/me/theme", userHandler.UpdateTheme, jwtMiddleware)
+	api.PUT("/users/me/email", userHandler.ChangeEmail, jwtMiddleware)
+	api.PUT("/users/me/password", userHandler.ChangePassword, jwtMiddleware)
+	api.GET("/users/:handle", userHandler.GetProfile)
+	api.GET("/users/:handle/posts", userHandler.GetUserPosts)
+	api.GET("/users/:handle/replies", userHandler.GetUserReplies)
+	api.GET("/users/:handle/followers", userHandler.GetFollowers)
+	api.GET("/users/:handle/following", userHandler.GetFollowing)
+	api.POST("/users/:handle/follow", userHandler.Follow, jwtMiddleware)
+	api.DELETE("/users/:handle/follow", userHandler.Unfollow, jwtMiddleware)
 
 	// --- 投稿 ---
-	v1.GET("/posts", postHandler.GetExplore, optionalAuthMiddleware)
-	v1.GET("/posts/home", postHandler.GetHome, jwtMiddleware)
-	v1.POST("/posts", postHandler.CreatePost, jwtMiddleware)
-	v1.GET("/posts/:id", postHandler.GetPost, optionalAuthMiddleware)
-	v1.PUT("/posts/:id", postHandler.UpdatePost, jwtMiddleware)
-	v1.DELETE("/posts/:id", postHandler.DeletePost, jwtMiddleware)
-	v1.GET("/posts/:id/comments", postHandler.GetComments, optionalAuthMiddleware)
-	v1.POST("/posts/:id/comments", postHandler.CreateComment, jwtMiddleware)
+	api.GET("/posts", postHandler.GetExplore)
+	api.GET("/posts/home", postHandler.GetHome, jwtMiddleware)
+	api.POST("/posts", postHandler.CreatePost, jwtMiddleware)
+	api.GET("/posts/:id", postHandler.GetPost)
+	api.PUT("/posts/:id", postHandler.UpdatePost, jwtMiddleware)
+	api.DELETE("/posts/:id", postHandler.DeletePost, jwtMiddleware)
+	api.GET("/posts/:id/comments", postHandler.GetComments)
+	api.POST("/posts/:id/comments", postHandler.CreateComment, jwtMiddleware)
 
 	// --- インタラクション ---
-	v1.POST("/posts/:id/like", interactionHandler.Like, jwtMiddleware)
-	v1.DELETE("/posts/:id/like", interactionHandler.Unlike, jwtMiddleware)
-	v1.POST("/posts/:id/repost", interactionHandler.Repost, jwtMiddleware)
-	v1.DELETE("/posts/:id/repost", interactionHandler.Unrepost, jwtMiddleware)
-	v1.POST("/posts/:id/bookmark", interactionHandler.Bookmark, jwtMiddleware)
-	v1.DELETE("/posts/:id/bookmark", interactionHandler.Unbookmark, jwtMiddleware)
-	v1.GET("/bookmarks", interactionHandler.GetBookmarks, jwtMiddleware)
+	api.POST("/posts/:id/like", interactionHandler.Like, jwtMiddleware)
+	api.DELETE("/posts/:id/like", interactionHandler.Unlike, jwtMiddleware)
+	api.POST("/posts/:id/repost", interactionHandler.Repost, jwtMiddleware)
+	api.DELETE("/posts/:id/repost", interactionHandler.Unrepost, jwtMiddleware)
+	api.POST("/posts/:id/bookmark", interactionHandler.Bookmark, jwtMiddleware)
+	api.DELETE("/posts/:id/bookmark", interactionHandler.Unbookmark, jwtMiddleware)
+	api.GET("/bookmarks", interactionHandler.GetBookmarks, jwtMiddleware)
 
 	// --- 検索 ---
-	v1.GET("/search/users", searchHandler.SearchUsers, optionalAuthMiddleware)
-	v1.GET("/search/posts", searchHandler.SearchPosts, optionalAuthMiddleware)
-	v1.GET("/search/hashtags/:tag", searchHandler.GetHashtagPosts, optionalAuthMiddleware)
+	api.GET("/search/users", searchHandler.SearchUsers)
+	api.GET("/search/posts", searchHandler.SearchPosts)
+	api.GET("/search/hashtags/:tag", searchHandler.GetHashtagPosts)
 
 	// --- 通知 ---
-	v1.GET("/notifications", notificationHandler.GetNotifications, jwtMiddleware)
-	v1.PUT("/notifications/read", notificationHandler.MarkAllRead, jwtMiddleware)
+	api.GET("/notifications", notificationHandler.GetNotifications, jwtMiddleware)
+	api.PUT("/notifications/read", notificationHandler.MarkAllRead, jwtMiddleware)
 
 	// --- 管理者 ---
-	admin := v1.Group("/admin", jwtMiddleware, adminMiddleware)
+	admin := api.Group("/admin", jwtMiddleware, adminMiddleware)
 	admin.DELETE("/posts/:id", adminHandler.AdminDeletePost)
 	admin.PUT("/users/:id/suspend", adminHandler.SuspendUser)
 	admin.DELETE("/users/:id/suspend", adminHandler.UnsuspendUser)

@@ -191,7 +191,7 @@ cd frontend && npm run gen:api
 - **エラー**: Echo 標準エラー（404 / 405 / 413 / 429 / panic）も `{ "code", "message" }` 形式・日本語で返す。
 - **認証**: `SameSite=None` の Cookie 認証では CSRF 対策（CSRF トークンまたは Origin 検証）を状態変更 API に必ず入れる。
 - **入力**: パス・クエリ・ボディすべてを検証する（クエリも DTO + `validate` タグ）。文字列は前後空白・制御文字・ゼロ幅文字を除去してから保存する（HTML エスケープは表示側の React に任せる）。
-- **レートリミット**: 新しいエンドポイントも一般 API のレート制限対象に含める。E2E 用に `ENV=test` では上限を環境変数で緩和する。
+- **レートリミット**: 新しいエンドポイントも一般 API のレート制限対象に含める（`main.go` の `api` グループに登録すれば `generalRateLimit` が掛かる）。認証系（ログイン・登録・パスワードリセット）は `authRateLimit` を付ける。E2E 用に `ENV=test` では上限を環境変数（`RATE_LIMIT_AUTH_PER_MINUTE` / `RATE_LIMIT_GENERAL_PER_MINUTE`）で緩和する。クライアントIPは `c.RealIP()`（`ClientIPExtractor`、`TRUSTED_PROXY_HOPS`）で取り、`X-Forwarded-For` の先頭を直接使わない。
 - **セキュリティレビュー**: `main` へのマージ前に `/security-review` を実行し、結果を `docs/security-reviews/YYYY-MM-DD.md` に保存する。
 
 ---

@@ -6,6 +6,7 @@
 - **要件定義**: `.claude/CLAUDE.md` の「非機能要件」セクション
 - **更新履歴**:
   - 2026-10-11: 1-2（N+1）を解消し「達成」に更新。1-1 に実測値を追記。詳細は `docs/performance-timeline-report.md`
+  - 2026-10-11: 3-4（レートリミット）を実装し「達成」に更新
 
 ---
 
@@ -24,10 +25,10 @@
 | 3-1 | セキュリティ | CORS（フロントのオリジンのみ・credentials: true） | 達成 | — |
 | 3-2 | セキュリティ | 認証（HttpOnly Cookie / SameSite=None; Secure / 1h・7d） | **未達成** | **High** |
 | 3-3 | セキュリティ | 入力検証・サニタイズ | 部分的 | Medium |
-| 3-4 | セキュリティ | レートリミット（認証 5 回/分・一般 60 回/分） | **未達成** | **High** |
+| 3-4 | セキュリティ | レートリミット（認証 5 回/分・一般 60 回/分） | 達成 | — |
 | 3-5 | セキュリティ | security-review の定期実施 | 部分的 | Low |
 
-集計: **達成 4 / 部分的 5 / 未達成 4**（初回診断時は 達成 3 / 部分的 5 / 未達成 5）
+集計: **達成 5 / 部分的 5 / 未達成 3**（初回診断時は 達成 3 / 部分的 5 / 未達成 5）
 
 ### 既存ルールとの矛盾（要判断）
 
@@ -38,7 +39,7 @@
 | Access Token も HttpOnly Cookie で管理、1 時間 | Access Token は `localStorage`、15 分。「Access Token を Cookie に保存しない」と明記 | `rules/auth.md` |
 | Cookie は `SameSite=None; Secure` | `SameSite=Strict` | `rules/auth.md` |
 | 動画上限 50MB | 動画 100MB | `rules/api.md`, `rules/security.md` |
-| 認証系 5 回/分 | login 10 回/分・register 5 回/分（推奨扱い） | `rules/security.md` |
+| 認証系 5 回/分（実装済み） | login 10 回/分・register 5 回/分（推奨扱い） | `rules/security.md` |
 | 全入力をサニタイズ | 「文字列フィールドはサニタイズせず、バリデーションで制限する」 | `rules/security.md` |
 | 20 件単位 | `limit` は最大 50 まで指定可 | `rules/api.md` |
 
@@ -254,8 +255,14 @@
 
 #### 3-4. レートリミット（認証系 5 回/分・一般 60 回/分）
 
-- **ステータス**: **未達成**
-- **根拠**: `backend/cmd/server/main.go` に `middleware.RateLimiter` 等の適用なし。`golang.org/x/time/rate` も未使用。`docs/SECURITY_REVIEW_PHASE01.md` の P01-05 でも指摘済み（未対応のまま）。
+- **ステータス**: 達成（2026-10-11 対応）
+- **対応内容**: `internal/middleware/rate_limit.go` にインメモリ・fixed window（1 分）のレートリミッターを実装（Cloud Run max instances = 1 前提。mutex で保護）。
+  - 認証系（`/auth/login`・`/auth/register`・`/auth/google`）: IP 単位・API ごとに 5 回/分。一般（それ以外の `/api/v1/*`）: 認証済みはユーザーID、未認証は IP 単位・API ごとに 60 回/分。
+  - 全レスポンスに `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`（UNIX 秒）、超過時は 429 + `Retry-After`（秒）+ `RATE_LIMIT_EXCEEDED`。
+  - クライアントIPは `ClientIPExtractor`（`X-Forwarded-For` の右端から `TRUSTED_PROXY_HOPS` 番目。本番既定 1、開発・テストは接続元アドレス）。
+  - 上限の緩和は `ENV=test` のみ（`RATE_LIMIT_AUTH_PER_MINUTE` / `RATE_LIMIT_GENERAL_PER_MINUTE`）。
+  - 以下の「改善提案」は初回診断時の案（token bucket の Echo 標準ミドルウェア）で、実装では要件どおり fixed window を採用した。
+- **初回診断時の根拠**: `backend/cmd/server/main.go` に `middleware.RateLimiter` 等の適用なし。`golang.org/x/time/rate` も未使用。`docs/SECURITY_REVIEW_PHASE01.md` の P01-05 でも指摘済み（未対応のまま）。
 - **不足点**: ログイン総当たり・登録スパム・API 乱用を防げない。
 - **改善提案**:
   1. Echo 標準の `middleware.RateLimiterWithConfig` + `NewRateLimiterMemoryStoreWithConfig` を使う。
@@ -307,11 +314,12 @@
 - [x] `userService`（フォロー一覧）・`searchService.SearchUsers` を同様に書き換え
 - [x] リポジトリ統合テスト（クエリ数が件数に依存しない）・サービス単体テストを追加
 
-#### TODO-2: レートリミットの導入（3-4）
-- [ ] `middleware.RateLimiter` で認証系 5 回/分・一般 60 回/分を適用（429 は統一エラー形式）
-- [ ] `config` に `RATE_LIMIT_AUTH` / `RATE_LIMIT_GENERAL` を追加し、`.env.test` / `ci.yml` で E2E 用に緩和
-- [ ] 本番用 `IPExtractor` 設定
-- [ ] 429 を検証するハンドラーテストを追加
+#### TODO-2: レートリミットの導入（3-4）— 完了（2026-10-11）
+- [x] 自前の fixed window ミドルウェア（`internal/middleware/rate_limit.go`）で認証系 5 回/分・一般 60 回/分を適用（429 は統一エラー形式 + `Retry-After`）
+- [x] `config` に `RATE_LIMIT_AUTH_PER_MINUTE` / `RATE_LIMIT_GENERAL_PER_MINUTE`（ENV=test のみ有効）を追加し、`.env.test` / `ci.yml` で E2E 用に緩和
+- [x] `IPExtractor` 設定（`ClientIPExtractor`。`TRUSTED_PROXY_HOPS`、本番既定 1）
+- [x] 429・ヘッダー・識別子・ウィンドウ切替・同時アクセスのテストを追加（`rate_limit_test.go`）
+- [ ] パスワードリセットAPIを実装する際に `authRateLimit` を付ける（現状APIなし）
 
 #### TODO-3: 認証トークンの HttpOnly Cookie 化（3-2）
 - [ ] Access Token を `HttpOnly; Secure; SameSite=None` Cookie で発行、有効期限 1 時間

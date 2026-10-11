@@ -116,3 +116,66 @@ func TestLoad_ReadsEnvironmentVariables(t *testing.T) {
 	assert.True(t, cfg.IsTest())
 	assert.Equal(t, []string{"http://localhost:5174"}, cfg.AllowedOrigins())
 }
+
+func TestLoad_RateLimitDefaults(t *testing.T) {
+	t.Setenv("JWT_SECRET", "secret")
+	t.Setenv("JWT_REFRESH_SECRET", "refresh-secret")
+	t.Setenv("RATE_LIMIT_AUTH_PER_MINUTE", "")
+	t.Setenv("RATE_LIMIT_GENERAL_PER_MINUTE", "")
+	t.Setenv("TRUSTED_PROXY_HOPS", "")
+
+	for _, env := range []string{"development", "test", "production"} {
+		t.Setenv("ENV", env)
+		cfg := Load()
+		assert.Equal(t, 5, cfg.AuthRateLimit, env)
+		assert.Equal(t, 60, cfg.GeneralRateLimit, env)
+	}
+}
+
+func TestLoad_RateLimitOverrideOnlyInTest(t *testing.T) {
+	t.Setenv("JWT_SECRET", "secret")
+	t.Setenv("JWT_REFRESH_SECRET", "refresh-secret")
+	t.Setenv("RATE_LIMIT_AUTH_PER_MINUTE", "1000")
+	t.Setenv("RATE_LIMIT_GENERAL_PER_MINUTE", "10000")
+
+	t.Setenv("ENV", "test")
+	cfg := Load()
+	assert.Equal(t, 1000, cfg.AuthRateLimit)
+	assert.Equal(t, 10000, cfg.GeneralRateLimit)
+
+	// 開発・本番では環境変数で緩和できない
+	for _, env := range []string{"development", "production"} {
+		t.Setenv("ENV", env)
+		cfg := Load()
+		assert.Equal(t, DefaultAuthRateLimit, cfg.AuthRateLimit, env)
+		assert.Equal(t, DefaultGeneralRateLimit, cfg.GeneralRateLimit, env)
+	}
+
+	// 不正値は既定値に戻す
+	t.Setenv("ENV", "test")
+	t.Setenv("RATE_LIMIT_AUTH_PER_MINUTE", "0")
+	t.Setenv("RATE_LIMIT_GENERAL_PER_MINUTE", "abc")
+	cfg = Load()
+	assert.Equal(t, DefaultAuthRateLimit, cfg.AuthRateLimit)
+	assert.Equal(t, DefaultGeneralRateLimit, cfg.GeneralRateLimit)
+}
+
+func TestLoad_TrustedProxyHops(t *testing.T) {
+	t.Setenv("JWT_SECRET", "secret")
+	t.Setenv("JWT_REFRESH_SECRET", "refresh-secret")
+	t.Setenv("TRUSTED_PROXY_HOPS", "")
+
+	// 本番（Cloud Run）は 1 段、開発・テストは X-Forwarded-For を信頼しない
+	t.Setenv("ENV", "production")
+	assert.Equal(t, 1, Load().TrustedProxyHops)
+	t.Setenv("ENV", "development")
+	assert.Equal(t, 0, Load().TrustedProxyHops)
+	t.Setenv("ENV", "test")
+	assert.Equal(t, 0, Load().TrustedProxyHops)
+
+	t.Setenv("ENV", "production")
+	t.Setenv("TRUSTED_PROXY_HOPS", "2")
+	assert.Equal(t, 2, Load().TrustedProxyHops)
+	t.Setenv("TRUSTED_PROXY_HOPS", "-1")
+	assert.Equal(t, 1, Load().TrustedProxyHops, "負の値は既定値に戻す")
+}

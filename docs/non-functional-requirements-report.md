@@ -8,6 +8,7 @@
   - 2026-10-11: 1-2（N+1）を解消し「達成」に更新。1-1 に実測値を追記。詳細は `docs/performance-timeline-report.md`
   - 2026-10-11: 3-4（レートリミット）を実装し「達成」に更新
   - 2026-10-11: 3-2（認証トークンの HttpOnly Cookie 化・リフレッシュトークンの DB 管理）を実装し「達成」に更新
+  - 2026-10-11: 2-1（zerolog による構造化ログ・アクセスログ・リクエストID・スタックトレース付きエラーログ）と 2-3（共通エラーハンドラー）を実装し「達成」に更新
 
 ---
 
@@ -20,16 +21,16 @@
 | 1-3 | 性能 | アップロード制限（ミドルウェアで画像 5MB / 動画 50MB） | **未達成** | **High** |
 | 1-4 | 性能 | ページネーション（全件取得禁止・20 件単位） | 達成 | — |
 | 1-5 | 性能 | タイムアウト（API 30 秒 / DB 接続 5 秒） | **未達成** | Medium |
-| 2-1 | 運用・保守 | 構造化ログ（JSON） | 部分的 | Medium |
+| 2-1 | 運用・保守 | 構造化ログ（JSON） | 達成（2026-10-11 対応） | — |
 | 2-2 | 運用・保守 | 自動テスト（ユニット + E2E） | 達成 | — |
-| 2-3 | 運用・保守 | 安全なエラーメッセージ | 部分的 | Medium |
+| 2-3 | 運用・保守 | 安全なエラーメッセージ | 達成（2026-10-11 対応） | — |
 | 3-1 | セキュリティ | CORS（フロントのオリジンのみ・credentials: true） | 達成 | — |
 | 3-2 | セキュリティ | 認証（HttpOnly Cookie / SameSite=None; Secure / 1h・7d） | 達成 | — |
 | 3-3 | セキュリティ | 入力検証・サニタイズ | 部分的 | Medium |
 | 3-4 | セキュリティ | レートリミット（認証 5 回/分・一般 60 回/分） | 達成 | — |
 | 3-5 | セキュリティ | security-review の定期実施 | 部分的 | Low |
 
-集計: **達成 6 / 部分的 5 / 未達成 2**（初回診断時は 達成 3 / 部分的 5 / 未達成 5）
+集計: **達成 8 / 部分的 3 / 未達成 2**（初回診断時は 達成 3 / 部分的 5 / 未達成 5）
 
 ### 既存ルールとの矛盾（要判断）
 
@@ -156,7 +157,8 @@
 
 #### 2-1. 構造化ログ（アクセスログ・エラーログを JSON で記録）
 
-- **ステータス**: 部分的
+- **ステータス**: 達成（2026-10-11 対応）
+- **対応内容**: zerolog（`internal/logger`）を導入し全ログを 1 行 1 JSON に統一。`RequestID` ミドルウェアで UUID を発行して `X-Request-ID` で返し、コンテキストのロガーに `request_id` を自動付与。`AccessLog` ミドルウェアが method / path / route / status / latency_ms / request_id / user_id などを出力（5xx=ERROR、4xx・500ms 超=WARN）。5xx は `httperr.Internal` / `httperr.Handler` で原因エラーとスタックトレースを ERROR 記録。GORM も zerolog アダプター化。`log.*` / `fmt.Println` / `slog` は全廃。ルールは CLAUDE.md「ログ設計ルール」。以下は初回診断時の記録。
 - **根拠**:
   - アクセスログ: `backend/cmd/server/main.go:110` の `middleware.Logger()`。Echo v4 のデフォルトフォーマットは JSON（`time`, `id`, `remote_ip`, `method`, `uri`, `status`, `latency` など）であり達成。
   - エラーログ:
@@ -185,7 +187,8 @@
 
 #### 2-3. エラーハンドリング（適切で安全なエラーメッセージ）
 
-- **ステータス**: 部分的
+- **ステータス**: 達成（2026-10-11 対応）
+- **対応内容**: `httperr.Handler` を `e.HTTPErrorHandler` に設定し、Echo 標準エラー（404 / 405 / 413 / 429）を統一形式・日本語に変換。5xx・panic は内部情報を返さず、`request_id` と「お問い合わせの際はこのIDをお伝えください」を返す。以下は初回診断時の記録。
 - **根拠**:
   - 業務エラーは `dto.ErrorResponse{Code, Message}` の統一形式・日本語（`internal/dto/common.go`）で返され、内部エラーは `"サーバーエラーが発生しました"` に丸められている（例: `auth_handler.go:62`）。
   - バリデーションエラーは `handler.validationMessage()` で日本語化（`internal/handler/validation.go`）。
@@ -354,16 +357,16 @@
 - [ ] Axios `timeout: 30000`
 - [ ] `config_test.go` にテスト追加
 
-#### TODO-6: 構造化ログの統一（2-1）
-- [ ] `slog.NewJSONHandler` を `slog.SetDefault`、`log.*` を置換
-- [ ] `middleware.RequestID()` + `RequestLoggerWithConfig` でアクセスログを slog に統一
-- [ ] 5xx の原因エラーをログ出力
-- [ ] GORM ロガーを slog 化 / 本番は遅いクエリのみ
-- [ ] `backend/cmd/listbuckets_main.go` を削除
+#### TODO-6: 構造化ログの統一（2-1）— 完了（2026-10-11）
+- [x] zerolog（`internal/logger`）を導入し、`log.*` / `fmt.Println` / `slog` をすべて置換（slog ではなく zerolog を採用）
+- [x] `RequestID` / `AccessLog` ミドルウェア（自作）でリクエストID付きアクセスログを JSON 出力
+- [x] 5xx の原因エラーをスタックトレース付きで ERROR 出力（`httperr.Internal` / `httperr.Handler`）
+- [x] GORM ロガーを zerolog 化（SQL は開発のみ DEBUG、SQL エラー・200ms 超は WARN）
+- [x] `backend/cmd/listbuckets_main.go` の `fmt.Println` を構造化ログに置換（削除するかは別途判断）
 
-#### TODO-7: 共通 HTTPErrorHandler（2-3）
-- [ ] `handler.NewHTTPErrorHandler` を実装し `e.HTTPErrorHandler` に設定（404/405/413/429/500 を統一形式・日本語に）
-- [ ] 未定義ルート・panic のハンドラーテストを追加
+#### TODO-7: 共通 HTTPErrorHandler（2-3）— 完了（2026-10-11）
+- [x] `httperr.Handler` を実装し `e.HTTPErrorHandler` に設定（404/405/413/429/500 を統一形式・日本語に。5xx はリクエストIDのみ返す）
+- [x] 未定義ルート・panic のテストを追加（`httperr_test.go` / `middleware/logging_test.go` / `e2e/logging.spec.ts`）
 
 #### TODO-8: 入力検証の統一とサニタイズ（3-3）
 - [ ] 検索語・ハッシュタグのクエリ DTO と `validate` タグ（最大長）
@@ -373,7 +376,7 @@
 
 #### TODO-9: レスポンスタイムの計測（1-1）
 - [x] タイムラインの応答時間・SQL 本数の計測スクリプト（`make perf-timeline`、`X-DB-Query-Count` ヘッダー）
-- [ ] TODO-1 完了後、500ms 超を WARN 記録するミドルウェア（TODO-6 と統合）
+- [x] 500ms 超を WARN（`slow=true`）で記録（`AccessLog` ミドルウェアに統合）
 - [ ] 一覧取得 20 件の処理時間を検証する統合テスト
 
 ### Low

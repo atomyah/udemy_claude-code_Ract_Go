@@ -3,18 +3,17 @@
 package main
 
 import (
-	"log"
-
 	"github.com/atyahara/sns-backend/internal/config"
+	"github.com/atyahara/sns-backend/internal/logger"
 )
 
 func main() {
 	cfg := config.Load()
 	if !cfg.ShouldAutoMigrate() {
-		log.Fatalf("マイグレーションコマンドは development / test 環境でのみ実行できます (ENV=%s)", cfg.Env)
+		logger.L().Fatal().Str("env", cfg.Env).Msg("マイグレーションコマンドは development / test 環境でのみ実行できます")
 	}
 
 	// NewDB は ShouldAutoMigrate() が true のとき AutoMigrate を実行する
 	config.NewDB(cfg)
-	log.Println("マイグレーション完了")
+	logger.L().Info().Msg("マイグレーション完了")
 }

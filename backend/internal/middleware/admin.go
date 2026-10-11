@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/atyahara/sns-backend/internal/httperr"
 	"github.com/atyahara/sns-backend/internal/model"
 	"github.com/atyahara/sns-backend/internal/repository"
 	"github.com/google/uuid"
@@ -38,10 +39,7 @@ func AdminOnly(users UserFinder) echo.MiddlewareFunc {
 				return forbidden(c)
 			}
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]string{
-					"code":    "INTERNAL_ERROR",
-					"message": "サーバーエラーが発生しました",
-				})
+				return httperr.Internal(c, httperr.DefaultInternalMessage, err)
 			}
 			if user.Role != "admin" || user.IsSuspended {
 				return forbidden(c)

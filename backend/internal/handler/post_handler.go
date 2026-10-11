@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/atyahara/sns-backend/internal/dto"
+	"github.com/atyahara/sns-backend/internal/httperr"
 	"github.com/atyahara/sns-backend/internal/repository"
 	"github.com/atyahara/sns-backend/internal/service"
 	"github.com/atyahara/sns-backend/internal/utils"
@@ -42,7 +43,7 @@ func (h *PostHandler) GetExplore(c echo.Context) error {
 
 	resp, err := h.postSvc.GetExploreTimeline(c.Request().Context(), optionalUserID(c), cursor, limit)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 	return c.JSON(http.StatusOK, resp)
 }
@@ -69,7 +70,7 @@ func (h *PostHandler) GetHome(c echo.Context) error {
 
 	resp, err := h.postSvc.GetHomeTimeline(c.Request().Context(), userID, cursor, limit)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 	return c.JSON(http.StatusOK, resp)
 }
@@ -136,7 +137,7 @@ func (h *PostHandler) GetPost(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "POST_NOT_FOUND", Message: "投稿が見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -184,7 +185,7 @@ func (h *PostHandler) UpdatePost(c echo.Context) error {
 		case errors.Is(err, service.ErrForbidden):
 			return c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: "FORBIDDEN", Message: "自分の投稿のみ編集できます"})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "更新に失敗しました"})
+			return httperr.Internal(c, "更新に失敗しました", err)
 		}
 	}
 
@@ -221,7 +222,7 @@ func (h *PostHandler) DeletePost(c echo.Context) error {
 		case errors.Is(err, service.ErrForbidden):
 			return c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: "FORBIDDEN", Message: "自分の投稿のみ削除できます"})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "削除に失敗しました"})
+			return httperr.Internal(c, "削除に失敗しました", err)
 		}
 	}
 
@@ -250,7 +251,7 @@ func (h *PostHandler) GetComments(c echo.Context) error {
 
 	resp, err := h.postSvc.GetComments(c.Request().Context(), id, optionalUserID(c), cursor, limit)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -329,6 +330,6 @@ func respondPostMediaError(c echo.Context, err error) error {
 	case errors.Is(err, service.ErrFileTooLarge):
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: "VALIDATION_ERROR", Message: "ファイルサイズが上限を超えています"})
 	default:
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "投稿に失敗しました"})
+		return httperr.Internal(c, "投稿に失敗しました", err)
 	}
 }

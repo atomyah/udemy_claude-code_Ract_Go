@@ -1,12 +1,12 @@
 package config
 
 import (
-	"log"
-	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/atyahara/sns-backend/internal/logger"
 )
 
 // Config はアプリケーション設定
@@ -21,6 +21,9 @@ type Config struct {
 	Env                   string
 	// SQLLog はテスト環境でもSQLログ（全クエリ）を出力するかどうか（環境変数 SQL_LOG=true）
 	SQLLog bool
+	// LogLevel はログレベル（debug / info / warn / error）。空のときは開発環境 debug、それ以外 info（logger.ParseLevel）。
+	// テスト環境で SQL_LOG=true のときは SQL ログ（DEBUG）を出すため debug になる
+	LogLevel string
 	// AuthRateLimit は認証系API（ログイン・登録など）の IP あたり・API あたりの上限（回/分）
 	AuthRateLimit int
 	// GeneralRateLimit は一般APIのユーザー（未認証は IP）あたり・API あたりの上限（回/分）
@@ -51,6 +54,7 @@ func Load() *Config {
 		Port:                  getEnv("PORT", "8080"),
 		Env:                   getEnv("ENV", "development"),
 		SQLLog:                getEnv("SQL_LOG", "false") == "true",
+		LogLevel:              getEnv("LOG_LEVEL", ""),
 		AuthRateLimit:         DefaultAuthRateLimit,
 		GeneralRateLimit:      DefaultGeneralRateLimit,
 	}
@@ -76,11 +80,17 @@ func Load() *Config {
 	// フロント（localhost:5173）と API（localhost:8080）はポート違いの同一サイトなので SameSite=Lax でも Cookie は送られる
 	cfg.CookieSecure = !(cfg.IsDevelopment() && getEnv("COOKIE_SECURE", "true") == "false")
 
+	if cfg.LogLevel == "" && cfg.IsTest() && cfg.SQLLog {
+		cfg.LogLevel = "debug"
+	}
+	// 以降のログ（サーバー・マイグレーションコマンドとも）を環境に合ったレベルの JSON で出す
+	logger.Init(cfg.Env, cfg.LogLevel)
+
 	if cfg.JWTSecret == "" {
-		log.Fatal("JWT_SECRET is required")
+		logger.L().Fatal().Msg("JWT_SECRET is required")
 	}
 	if cfg.JWTRefreshSecret == "" {
-		log.Fatal("JWT_REFRESH_SECRET is required")
+		logger.L().Fatal().Msg("JWT_REFRESH_SECRET is required")
 	}
 
 	return cfg
@@ -147,7 +157,7 @@ func getEnvInt(key string, fallback, min int) int {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil || n < min {
-		slog.Warn("invalid integer environment variable, using default", "key", key, "default", fallback)
+		logger.L().Warn().Str("key", key).Int("default", fallback).Msg("invalid integer environment variable, using default")
 		return fallback
 	}
 	return n

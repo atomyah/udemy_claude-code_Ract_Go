@@ -6,6 +6,7 @@ import (
 
 	"github.com/atyahara/sns-backend/internal/authtoken"
 	"github.com/atyahara/sns-backend/internal/dto"
+	"github.com/atyahara/sns-backend/internal/httperr"
 	"github.com/atyahara/sns-backend/internal/service"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
@@ -67,7 +68,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		case errors.Is(err, service.ErrPasswordTooLong):
 			return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: "VALIDATION_ERROR", Message: passwordTooLongMessage})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "サーバーエラーが発生しました"})
+			return httperr.Internal(c, httperr.DefaultInternalMessage, err)
 		}
 	}
 
@@ -110,7 +111,7 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		case errors.Is(err, service.ErrAccountSuspended):
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "ACCOUNT_SUSPENDED", Message: "このアカウントは停止されています"})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "サーバーエラーが発生しました"})
+			return httperr.Internal(c, httperr.DefaultInternalMessage, err)
 		}
 	}
 
@@ -133,7 +134,7 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 	}
 
 	if err := h.svc.Logout(c.Request().Context(), refreshToken); err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "サーバーエラーが発生しました"})
+		return httperr.Internal(c, httperr.DefaultInternalMessage, err)
 	}
 
 	h.clearAuthCookies(c)
@@ -157,7 +158,7 @@ func (h *AuthHandler) RevokeAll(c echo.Context) error {
 	}
 
 	if err := h.svc.RevokeAll(c.Request().Context(), userID); err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "サーバーエラーが発生しました"})
+		return httperr.Internal(c, httperr.DefaultInternalMessage, err)
 	}
 
 	h.clearAuthCookies(c)
@@ -195,7 +196,7 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 			h.clearAuthCookies(c)
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "INVALID_TOKEN", Message: "ログイン情報が無効です。再度ログインしてください"})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "サーバーエラーが発生しました"})
+			return httperr.Internal(c, httperr.DefaultInternalMessage, err)
 		}
 	}
 
@@ -238,7 +239,7 @@ func (h *AuthHandler) GoogleLogin(c echo.Context) error {
 		case errors.Is(err, service.ErrAccountSuspended):
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "ACCOUNT_SUSPENDED", Message: "このアカウントは停止されています"})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "サーバーエラーが発生しました"})
+			return httperr.Internal(c, httperr.DefaultInternalMessage, err)
 		}
 	}
 

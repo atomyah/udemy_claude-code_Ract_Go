@@ -187,12 +187,45 @@ cd frontend && npm run gen:api
 - **一覧 API**: 投稿・ユーザーごとの集計（いいね数・フォロー状態など）をループ内で個別クエリしない。ID をまとめて `IN` + `GROUP BY` で一括取得する。`limit` のデフォルトは 20。
 - **アップロード**: サイズ上限はサービス層の検証に加え、ルート単位の `middleware.BodyLimit` でも制限する。
 - **タイムアウト**: サーバー側は `ContextTimeout` / `http.Server` のタイムアウト、DB は `connect_timeout=5`。リポジトリは必ず `WithContext(ctx)` を使う。
-- **ログ**: `log/slog` の JSON ハンドラーを使う。`log.Printf` / `fmt.Println` は使わない。5xx を返すときは原因エラーをログに残す（レスポンスには含めない）。
+- **ログ**: zerolog（`internal/logger`）で JSON 出力する。`log.*` / `fmt.Print*` / `log/slog` は使わない（テストコード・コマンドを含む）。5xx は `httperr.Internal` で原因をログに残す（レスポンスには含めない）。詳細は下の「ログ設計ルール」。
 - **エラー**: Echo 標準エラー（404 / 405 / 413 / 429 / panic）も `{ "code", "message" }` 形式・日本語で返す。
 - **認証**: `SameSite=None` の Cookie 認証では CSRF 対策（CSRF トークンまたは Origin 検証）を状態変更 API に必ず入れる。
 - **入力**: パス・クエリ・ボディすべてを検証する（クエリも DTO + `validate` タグ）。文字列は前後空白・制御文字・ゼロ幅文字を除去してから保存する（HTML エスケープは表示側の React に任せる）。
 - **レートリミット**: 新しいエンドポイントも一般 API のレート制限対象に含める（`main.go` の `api` グループに登録すれば `generalRateLimit` が掛かる）。認証系（ログイン・登録・パスワードリセット）は `authRateLimit` を付ける。E2E 用に `ENV=test` では上限を環境変数（`RATE_LIMIT_AUTH_PER_MINUTE` / `RATE_LIMIT_GENERAL_PER_MINUTE`）で緩和する。クライアントIPは `c.RealIP()`（`ClientIPExtractor`、`TRUSTED_PROXY_HOPS`）で取り、`X-Forwarded-For` の先頭を直接使わない。
 - **セキュリティレビュー**: `main` へのマージ前に `/security-review` を実行し、結果を `docs/security-reviews/YYYY-MM-DD.md` に保存する。
+
+---
+
+## ログ設計ルール（必ず守ること）
+
+実装: `backend/internal/logger`（zerolog・GORM アダプター・スタックトレース）、`internal/httperr`（エラーレスポンス + エラーログ）、`internal/middleware/request_id.go` / `access_log.go` / `recover.go`。
+
+1. **構造化ログ**: ログは zerolog で **1 行 1 JSON**（標準出力）に出す。`log.*` / `fmt.Print*` / `log/slog` / Echo の `middleware.Logger()` は使わない（テストコード・`cmd/` 配下のコマンドも同じ）。
+   - リクエスト処理中は `logger.FromContext(ctx)`、リクエスト外（起動・設定読み込みなど）は `logger.L()` を使う。
+   - メッセージは固定の短い文字列にし、値は `Str("key", v)` などのフィールドで渡す（`Msgf` で値を埋め込まない）。
+2. **ログレベルの使い分け**:
+
+   | レベル | 用途 |
+   |-------|------|
+   | DEBUG | SQL（`logger.NewGormLogger`）など開発時の詳細。本番では出さない |
+   | INFO | アクセスログ（2xx / 3xx）、起動・マイグレーション完了などの通常イベント |
+   | WARN | 4xx のアクセスログ、遅いリクエスト（500ms 超、`slow=true`）、SQL エラー・遅い SQL（200ms 超）、設定値の誤り |
+   | ERROR | 5xx・panic。**必ずスタックトレース（`stack`）付き** |
+
+   - レベルは `LOG_LEVEL`（debug / info / warn / error）で変えられる。未設定時は開発 DEBUG、テスト・本番 INFO（テストで `SQL_LOG=true` のときは DEBUG）。
+   - SQL 文はユーザーデータを含むため、開発環境（とテストの `SQL_LOG=true`）以外では出さない。
+3. **リクエストID**: `RequestID` ミドルウェアが全リクエストに UUID を発行し、`X-Request-ID` レスポンスヘッダーで返す（CORS の `ExposeHeaders` にも含める）。クライアントが送った `X-Request-ID` は使わない。`logger.FromContext(ctx)` のログには `request_id` が自動で付くので、ハンドラー・サービスは `c.Request().Context()` / `ctx` を必ず引き回す。
+4. **アクセスログ**: `AccessLog` ミドルウェアが全リクエストで 1 行（`message: "access"`）出す。項目は `time` / `request_id` / `action` / `description` / `method` / `path` / `route` / `status` / `latency_ms` / `user_id`（認証済みのとき）/ `remote_ip` / `user_agent` / `bytes_out` / `db_queries`（開発・テストのみ）。ミドルウェアの順序は **RequestID → AccessLog → Recover → その他**。
+   - `action` はユーザーの操作の日本語名、`description` は「誰が・何を・どの対象に・結果どうなったか」の日本語の 1 文（例: `ログインユーザーが「いいね」（id=8a16...）をリクエストし、成功しました（201）`）。
+   - `action` は **Swagger の `@Summary` から自動で作る**（`ActionsFromSwagger`）。新しい API を追加したら `@Summary` を「利用者の操作」として読める日本語で書き、`swag init` で `docs/` を再生成すること（未生成だと `action` が「不明な操作」になる）。
+   - `description` にはパスパラメータ（`id` / `handle` など）だけを含める。クエリ文字列・リクエストボディ（検索語・投稿本文・パスワードなど）は入れない。
+5. **エラーログとエラーレスポンス**:
+   - ハンドラーで 500 を返すときは `c.JSON(500, ...)` を直接書かず、`return httperr.Internal(c, "〇〇に失敗しました", err)` を使う。原因エラー・スタックトレース・`request_id`・`user_id` が ERROR で記録される。
+   - 利用者向けのレスポンスには内部情報（エラー文字列・SQL・スタック）を含めない。5xx は `{ "code": "INTERNAL_ERROR", "message": "〇〇に失敗しました。お問い合わせの際はこのIDをお伝えください: <ID>", "request_id": "<ID>" }` にする。
+   - ハンドラーが返したエラー・panic・Echo 標準エラー（404 / 405 / 413 / 429）は `e.HTTPErrorHandler = httperr.Handler` が日本語の統一形式に変換する。panic は `Recover` ミドルウェアが panic 地点のスタックを付けて渡す。
+   - 4xx（業務エラー・バリデーション）はエラーログを出さない（アクセスログの WARN で足りる）。
+6. **ログに出さないもの**: パスワード・トークン・Cookie・`password_hash`・メールアドレスなどの個人情報、リクエストボディ全体。
+7. **テスト**: ログ出力を検証するときは `logger.SetOutput(buf, level)` でバッファに差し替え、`t.Cleanup` で `os.Stdout` に戻す。
 
 ---
 

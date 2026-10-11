@@ -88,6 +88,10 @@ definitions:
       message:
         example: リクエストが不正です
         type: string
+      request_id:
+        description: RequestID はサーバーエラー（5xx）のときだけ返す。問い合わせ時にログと突き合わせるためのID
+        example: 0b5e2f9c-3d6a-4f0e-9a51-7c2d8e4b1f60
+        type: string
     type: object
   github_com_atyahara_sns-backend_internal_dto.GoogleLoginRequest:
     properties:

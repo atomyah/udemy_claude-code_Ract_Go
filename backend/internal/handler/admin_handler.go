@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/atyahara/sns-backend/internal/dto"
+	"github.com/atyahara/sns-backend/internal/httperr"
 	"github.com/atyahara/sns-backend/internal/repository"
 	"github.com/atyahara/sns-backend/internal/service"
 	"github.com/atyahara/sns-backend/internal/utils"
@@ -45,7 +46,7 @@ func (h *AdminHandler) AdminDeletePost(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "POST_NOT_FOUND", Message: "投稿が見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "削除に失敗しました"})
+		return httperr.Internal(c, "削除に失敗しました", err)
 	}
 
 	return c.NoContent(http.StatusNoContent)
@@ -74,7 +75,7 @@ func (h *AdminHandler) SuspendUser(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "USER_NOT_FOUND", Message: "ユーザーが見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "停止処理に失敗しました"})
+		return httperr.Internal(c, "停止処理に失敗しました", err)
 	}
 
 	return c.NoContent(http.StatusNoContent)
@@ -103,7 +104,7 @@ func (h *AdminHandler) UnsuspendUser(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "USER_NOT_FOUND", Message: "ユーザーが見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "停止解除に失敗しました"})
+		return httperr.Internal(c, "停止解除に失敗しました", err)
 	}
 
 	return c.NoContent(http.StatusNoContent)
@@ -128,7 +129,7 @@ func (h *AdminHandler) ListUsers(c echo.Context) error {
 
 	resp, err := h.adminSvc.ListUsers(c.Request().Context(), cursor, limit)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)

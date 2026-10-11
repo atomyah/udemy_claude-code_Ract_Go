@@ -68,6 +68,7 @@ air
 
 - エラーは必ず呼び出し元に返す。`_` で無視しない。
 - ハンドラー層でエラーを HTTP レスポンスに変換する。
+- 想定外のエラー（500）は `return httperr.Internal(c, "〇〇に失敗しました", err)` で返す。原因はスタックトレース付きで ERROR ログに残り、レスポンスにはリクエストIDだけが入る。
 - カスタムエラー型で業務エラー（NotFound, Forbidden など）を表現する。
 
 ```go
@@ -195,4 +196,5 @@ ENV=development  # development | production
 - グローバル変数でのセッション / DB 接続管理。
 - `panic` を業務エラーとして使う。
 - DB 直接アクセスをハンドラー層で行う。
-- `fmt.Println` / `log.Println` をコミットする（`slog` または `zerolog` を使う）。
+- `fmt.Println` / `log.Println` / `log/slog` をコミットする（zerolog の `internal/logger` を使う。詳細は CLAUDE.md「ログ設計ルール」）。
+- 500 を `c.JSON(http.StatusInternalServerError, ...)` で直接返す（`httperr.Internal` で原因をログに残す）。

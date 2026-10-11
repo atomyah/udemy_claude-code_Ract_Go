@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/atyahara/sns-backend/internal/dto"
+	"github.com/atyahara/sns-backend/internal/httperr"
 	"github.com/atyahara/sns-backend/internal/service"
 	"github.com/atyahara/sns-backend/internal/utils"
 	"github.com/google/uuid"
@@ -42,7 +43,7 @@ func (h *NotificationHandler) GetNotifications(c echo.Context) error {
 
 	resp, err := h.notificationSvc.GetNotifications(c.Request().Context(), userID, cursor, limit)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -65,7 +66,7 @@ func (h *NotificationHandler) MarkAllRead(c echo.Context) error {
 	}
 
 	if err := h.notificationSvc.MarkAllRead(c.Request().Context(), userID); err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "既読処理に失敗しました"})
+		return httperr.Internal(c, "既読処理に失敗しました", err)
 	}
 
 	return c.NoContent(http.StatusNoContent)

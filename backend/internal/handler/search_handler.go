@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/atyahara/sns-backend/internal/dto"
+	"github.com/atyahara/sns-backend/internal/httperr"
 	"github.com/atyahara/sns-backend/internal/repository"
 	"github.com/atyahara/sns-backend/internal/service"
 	"github.com/atyahara/sns-backend/internal/utils"
@@ -43,7 +44,7 @@ func (h *SearchHandler) SearchUsers(c echo.Context) error {
 
 	resp, err := h.searchSvc.SearchUsers(c.Request().Context(), q, optionalUserID(c), cursor, limit)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "検索に失敗しました"})
+		return httperr.Internal(c, "検索に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -71,7 +72,7 @@ func (h *SearchHandler) SearchPosts(c echo.Context) error {
 
 	resp, err := h.searchSvc.SearchPosts(c.Request().Context(), q, optionalUserID(c), cursor, limit)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "検索に失敗しました"})
+		return httperr.Internal(c, "検索に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -99,7 +100,7 @@ func (h *SearchHandler) GetHashtagPosts(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "HASHTAG_NOT_FOUND", Message: "ハッシュタグが見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)

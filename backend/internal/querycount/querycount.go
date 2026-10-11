@@ -24,6 +24,15 @@ func Count(ctx context.Context) int64 {
 	return 0
 }
 
+// Lookup はカウンターが数えたクエリ数を返す。カウンターが無い（計測が無効な）ときは ok=false
+func Lookup(ctx context.Context) (count int64, ok bool) {
+	c, ok := ctx.Value(counterKey{}).(*atomic.Int64)
+	if !ok {
+		return 0, false
+	}
+	return c.Load(), true
+}
+
 // Register はGORMの全種別（SELECT / INSERT / UPDATE / DELETE / Row / Raw）のコールバックに
 // カウント処理を登録する。Preloadで発行されるクエリもSELECTとして1本ずつ数えられる。
 func Register(db *gorm.DB) error {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/atyahara/sns-backend/internal/dto"
+	"github.com/atyahara/sns-backend/internal/httperr"
 	"github.com/atyahara/sns-backend/internal/repository"
 	"github.com/atyahara/sns-backend/internal/service"
 	"github.com/atyahara/sns-backend/internal/utils"
@@ -63,12 +64,12 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 
 	user, err := h.userRepo.FindByID(c.Request().Context(), userID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "ユーザー情報の取得に失敗しました"})
+		return httperr.Internal(c, "ユーザー情報の取得に失敗しました", err)
 	}
 
 	resp, err := h.userSvc.GetProfile(c.Request().Context(), user.Handle, &userID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "ユーザー情報の取得に失敗しました"})
+		return httperr.Internal(c, "ユーザー情報の取得に失敗しました", err)
 	}
 	resp.Email = &user.Email
 	resp.Role = &user.Role
@@ -105,7 +106,7 @@ func (h *UserHandler) UpdateProfile(c echo.Context) error {
 
 	resp, err := h.userSvc.UpdateProfile(c.Request().Context(), userID, &req)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "更新に失敗しました"})
+		return httperr.Internal(c, "更新に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -133,11 +134,11 @@ func (h *UserHandler) UpdateAvatar(c echo.Context) error {
 	userID := c.Get("userID").(uuid.UUID)
 	user, err := h.userRepo.FindByID(c.Request().Context(), userID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "ユーザー情報の取得に失敗しました"})
+		return httperr.Internal(c, "ユーザー情報の取得に失敗しました", err)
 	}
 	user.AvatarURL = &url
 	if err := h.userRepo.Update(c.Request().Context(), user); err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "保存に失敗しました"})
+		return httperr.Internal(c, "保存に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, dto.AvatarResponse{AvatarURL: url})
@@ -165,11 +166,11 @@ func (h *UserHandler) UpdateBanner(c echo.Context) error {
 	userID := c.Get("userID").(uuid.UUID)
 	user, err := h.userRepo.FindByID(c.Request().Context(), userID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "ユーザー情報の取得に失敗しました"})
+		return httperr.Internal(c, "ユーザー情報の取得に失敗しました", err)
 	}
 	user.BannerURL = &url
 	if err := h.userRepo.Update(c.Request().Context(), user); err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "保存に失敗しました"})
+		return httperr.Internal(c, "保存に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, dto.BannerResponse{BannerURL: url})
@@ -202,7 +203,7 @@ func (h *UserHandler) respondUploadError(c echo.Context, err error) error {
 	case errors.Is(err, service.ErrUnsupportedFileType):
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: "VALIDATION_ERROR", Message: "JPEG/PNG/WebP形式のみ対応しています"})
 	default:
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "アップロードに失敗しました"})
+		return httperr.Internal(c, "アップロードに失敗しました", err)
 	}
 }
 
@@ -234,7 +235,7 @@ func (h *UserHandler) UpdateTheme(c echo.Context) error {
 	}
 
 	if err := h.userSvc.UpdateTheme(c.Request().Context(), userID, req.Theme); err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "更新に失敗しました"})
+		return httperr.Internal(c, "更新に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, dto.SuccessResponse{Message: "success"})
@@ -277,7 +278,7 @@ func (h *UserHandler) ChangeEmail(c echo.Context) error {
 		case errors.Is(err, service.ErrEmailTaken):
 			return c.JSON(http.StatusConflict, dto.ErrorResponse{Code: "EMAIL_TAKEN", Message: "このメールアドレスは既に使用されています"})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "変更に失敗しました"})
+			return httperr.Internal(c, "変更に失敗しました", err)
 		}
 	}
 
@@ -320,7 +321,7 @@ func (h *UserHandler) ChangePassword(c echo.Context) error {
 		case errors.Is(err, service.ErrPasswordTooLong):
 			return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: "VALIDATION_ERROR", Message: passwordTooLongMessage})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "変更に失敗しました"})
+			return httperr.Internal(c, "変更に失敗しました", err)
 		}
 	}
 
@@ -345,7 +346,7 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "USER_NOT_FOUND", Message: "ユーザーが見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -373,7 +374,7 @@ func (h *UserHandler) GetUserPosts(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "USER_NOT_FOUND", Message: "ユーザーが見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -401,7 +402,7 @@ func (h *UserHandler) GetUserReplies(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "USER_NOT_FOUND", Message: "ユーザーが見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -429,7 +430,7 @@ func (h *UserHandler) GetFollowers(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "USER_NOT_FOUND", Message: "ユーザーが見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -457,7 +458,7 @@ func (h *UserHandler) GetFollowing(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "USER_NOT_FOUND", Message: "ユーザーが見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -494,7 +495,7 @@ func (h *UserHandler) Follow(c echo.Context) error {
 		case errors.Is(err, service.ErrAlreadyFollowed):
 			return c.JSON(http.StatusConflict, dto.ErrorResponse{Code: "ALREADY_FOLLOWED", Message: "既にフォローしています"})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "フォローに失敗しました"})
+			return httperr.Internal(c, "フォローに失敗しました", err)
 		}
 	}
 
@@ -526,7 +527,7 @@ func (h *UserHandler) Unfollow(c echo.Context) error {
 		case errors.Is(err, repository.ErrNotFound), errors.Is(err, service.ErrNotFollowing):
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "USER_NOT_FOUND", Message: "ユーザーが見つかりません"})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "フォロー解除に失敗しました"})
+			return httperr.Internal(c, "フォロー解除に失敗しました", err)
 		}
 	}
 

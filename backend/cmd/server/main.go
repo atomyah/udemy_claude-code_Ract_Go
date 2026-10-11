@@ -39,13 +39,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"net/http"
 
-	_ "github.com/atyahara/sns-backend/docs"
+	"github.com/atyahara/sns-backend/docs"
 	"github.com/atyahara/sns-backend/internal/config"
 	"github.com/atyahara/sns-backend/internal/handler"
+	"github.com/atyahara/sns-backend/internal/httperr"
+	"github.com/atyahara/sns-backend/internal/logger"
 	appMiddleware "github.com/atyahara/sns-backend/internal/middleware"
 	"github.com/atyahara/sns-backend/internal/repository"
 	"github.com/atyahara/sns-backend/internal/service"
@@ -77,9 +79,9 @@ func main() {
 	fbApp, err := config.NewFirebaseApp(cfg)
 	if err != nil {
 		if !cfg.IsTest() {
-			log.Fatalf("firebase app init failed: %v", err)
+			logger.L().Fatal().Err(err).Msg("firebase app init failed")
 		}
-		log.Printf("firebase app init skipped (ENV=test): %v", err)
+		logger.L().Warn().Err(err).Msg("firebase app init skipped (ENV=test)")
 		fbApp = nil
 	}
 	authSvc := service.NewAuthService(cfg, userRepo, refreshTokenRepo, fbApp)
@@ -110,12 +112,19 @@ func main() {
 	// ============================================================
 	e := echo.New()
 	e.HideBanner = true
+	// 起動メッセージはテキストで出るため隠し、構造化ログ（"server started"）で出す
+	e.HidePort = true
 	// c.RealIP()（レートリミット・アクセスログ）で使うクライアントIPの取得方法。
 	// Echo 既定の X-Forwarded-For 先頭は偽装できるため、信頼するプロキシ段数で右端から取る
 	e.IPExtractor = appMiddleware.ClientIPExtractor(cfg.TrustedProxyHops)
+	// ハンドラーのエラー・panic・Echo 標準エラー（404 / 405 など）を { code, message } の日本語にそろえ、
+	// 5xx は原因をスタックトレース付きで ERROR ログに残してリクエストIDだけを返す
+	e.HTTPErrorHandler = httperr.Handler
 
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
+	// 順序: リクエストID → アクセスログ → panic 回復（panic も 500 としてアクセスログに残す）
+	e.Use(appMiddleware.RequestID())
+	e.Use(appMiddleware.AccessLog(accessLogActions()))
+	e.Use(appMiddleware.Recover())
 	if cfg.ShouldCountQueries() {
 		e.Use(appMiddleware.QueryCount())
 	}
@@ -124,8 +133,9 @@ func main() {
 		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAuthorization},
 		AllowCredentials: true,
-		// フロントエンドがレート制限の状態を読めるようにする
+		// フロントエンドがレート制限の状態とリクエストIDを読めるようにする
 		ExposeHeaders: []string{
+			echo.HeaderXRequestID,
 			appMiddleware.HeaderRateLimitLimit,
 			appMiddleware.HeaderRateLimitRemaining,
 			appMiddleware.HeaderRateLimitReset,
@@ -224,5 +234,19 @@ func main() {
 	admin.GET("/users", adminHandler.ListUsers)
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
-	e.Logger.Fatal(e.Start(addr))
+	logger.L().Info().Str("addr", addr).Str("env", cfg.Env).Msg("server started")
+	if err := e.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.L().Fatal().Err(err).Msg("server stopped")
+	}
+}
+
+// accessLogActions はアクセスログの action（操作の日本語名）に使う表を、Swagger 定義の @Summary から作る。
+// 読み込めなくてもサーバーは起動し、action は「不明な操作」になる
+func accessLogActions() appMiddleware.ActionCatalog {
+	actions, err := appMiddleware.ActionsFromSwagger([]byte(docs.SwaggerInfo.ReadDoc()), docs.SwaggerInfo.BasePath)
+	if err != nil {
+		logger.L().Warn().Err(err).Msg("failed to load access log actions from swagger")
+		return appMiddleware.ActionCatalog{}
+	}
+	return actions
 }

@@ -8,7 +8,7 @@
 #   1. 計測用ユーザーをAPIで新規登録し、アクセストークンを取得する
 #   2. scripts/perf/seed.sql で db_test に計測用データを投入する
 #   3. ウォームアップ1回の後、トークン付きで REQUESTS 回（既定 10 回）リクエストし、
-#      クライアント側の応答時間（平均・最小・最大）、サーバー側の処理時間（アクセスログの latency）、
+#      クライアント側の応答時間（平均・最小・最大）、サーバー側の処理時間（アクセスログの latency_ms）、
 #      X-DB-Query-Count ヘッダー（1リクエストのSQL本数）を出力する
 #   4. 1リクエスト分のSQLログ（api_test を SQL_LOG=true で起動した場合）を保存する
 #
@@ -103,17 +103,17 @@ printf '%s\n' "${times[@]}" | awk -v q="$last_queries" '
     printf "\naverage_ms: %.1f\nmin_ms: %.1f\nmax_ms: %.1f\ndb_queries_per_request: %s\n", sum / NR, min, max, q
   }' >> "$RESULT_FILE"
 
-# サーバー側の処理時間: Echo のアクセスログ（JSON）の latency（ナノ秒）を集計する。
+# サーバー側の処理時間: アクセスログ（JSON・message="access"）の latency_ms を集計する。
 # クライアント側の値と違い、ネットワーク・Docker のポート転送のオーバーヘッドを含まない。
 # ホストとDocker VMの時計がずれることがあるため時刻（--since）では区切らず、
 # この時点で最後に記録された REQUESTS 件（= 今計測したリクエスト）を対象にする
 sleep 1
 $TEST_COMPOSE logs --no-log-prefix --no-color api_test 2>/dev/null \
-  | grep '^{"time"' \
-  | jq -r 'select(.method == "GET" and (.uri | startswith("/api/v1/posts?"))) | .latency' \
+  | grep '^{' \
+  | jq -r 'select(.message == "access" and .method == "GET" and .path == "/api/v1/posts") | .latency_ms' \
   | tail -n "$REQUESTS" \
   | awk '
-    { ms = $1 / 1e6; sum += ms; if (NR == 1 || ms < min) min = ms; if (NR == 1 || ms > max) max = ms }
+    { ms = $1; sum += ms; if (NR == 1 || ms < min) min = ms; if (NR == 1 || ms > max) max = ms }
     END {
       if (NR == 0) { print "server_average_ms: N/A"; exit }
       printf "server_average_ms: %.1f\nserver_min_ms: %.1f\nserver_max_ms: %.1f\nserver_samples: %d\n", sum / NR, min, max, NR
@@ -126,7 +126,7 @@ lines_before=$(api_logs | wc -l)
 request > /dev/null
 sleep 1
 api_logs | tail -n +"$((lines_before + 1))" | sed 's/\x1b\[[0-9;]*m//g' > "$SQL_LOG_FILE" || true
-sql_lines=$(grep -c '\[rows:' "$SQL_LOG_FILE" || true)
+sql_lines=$(grep -c '"message":"sql"' "$SQL_LOG_FILE" || true)
 echo "sql_log_lines_for_one_request: $sql_lines (SQL_LOG=true のときのみ出力。詳細: $SQL_LOG_FILE)" >> "$RESULT_FILE"
 
 echo ""

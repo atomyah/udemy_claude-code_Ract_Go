@@ -2,17 +2,17 @@ package repository
 
 import (
 	"context"
-	"log"
 	"os"
 	"sync"
 	"testing"
 
+	"github.com/atyahara/sns-backend/internal/logger"
 	"github.com/atyahara/sns-backend/internal/model"
 	"github.com/atyahara/sns-backend/internal/querycount"
 	"github.com/google/uuid"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // testDB はテスト用PostgreSQL（db_test）への接続。DATABASE_URLが無い場合はnilのまま
@@ -24,23 +24,23 @@ var testDB *gorm.DB
 func TestMain(m *testing.M) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		log.Println("DATABASE_URL が未設定のためリポジトリ統合テストをスキップします")
+		logger.L().Warn().Msg("DATABASE_URL が未設定のためリポジトリ統合テストをスキップします")
 		os.Exit(m.Run())
 	}
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Silent)})
 	if err != nil {
-		log.Fatalf("テストDB接続失敗: %v", err)
+		logger.L().Fatal().Err(err).Msg("テストDB接続失敗")
 	}
 	if err := db.AutoMigrate(
 		&model.User{}, &model.Post{}, &model.Media{}, &model.Like{},
 		&model.Bookmark{}, &model.Follow{}, &model.Hashtag{}, &model.PostHashtag{}, &model.Notification{}, &model.RefreshToken{},
 	); err != nil {
-		log.Fatalf("テストDBマイグレーション失敗: %v", err)
+		logger.L().Fatal().Err(err).Msg("テストDBマイグレーション失敗")
 	}
 	// N+1検出テストでクエリ本数を数えられるようにする（カウンター付きコンテキストのクエリのみ数える）
 	if err := querycount.Register(db); err != nil {
-		log.Fatalf("クエリ数カウンターの登録失敗: %v", err)
+		logger.L().Fatal().Err(err).Msg("クエリ数カウンターの登録失敗")
 	}
 	testDB = db
 

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/atyahara/sns-backend/internal/dto"
+	"github.com/atyahara/sns-backend/internal/httperr"
 	"github.com/atyahara/sns-backend/internal/repository"
 	"github.com/atyahara/sns-backend/internal/service"
 	"github.com/atyahara/sns-backend/internal/utils"
@@ -55,7 +56,7 @@ func (h *InteractionHandler) Like(c echo.Context) error {
 		case errors.Is(err, service.ErrAlreadyLiked):
 			return c.JSON(http.StatusConflict, dto.ErrorResponse{Code: "ALREADY_LIKED", Message: "既にいいねしています"})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "いいねに失敗しました"})
+			return httperr.Internal(c, "いいねに失敗しました", err)
 		}
 	}
 
@@ -89,7 +90,7 @@ func (h *InteractionHandler) Unlike(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "POST_NOT_FOUND", Message: "投稿が見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "いいね取消に失敗しました"})
+		return httperr.Internal(c, "いいね取消に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -168,7 +169,7 @@ func (h *InteractionHandler) Unrepost(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "POST_NOT_FOUND", Message: "投稿が見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "リポスト取消に失敗しました"})
+		return httperr.Internal(c, "リポスト取消に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)
@@ -205,7 +206,7 @@ func (h *InteractionHandler) Bookmark(c echo.Context) error {
 		case errors.Is(err, service.ErrAlreadyBookmarked):
 			return c.JSON(http.StatusConflict, dto.ErrorResponse{Code: "ALREADY_BOOKMARKED", Message: "既にブックマークしています"})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "ブックマークに失敗しました"})
+			return httperr.Internal(c, "ブックマークに失敗しました", err)
 		}
 	}
 
@@ -238,7 +239,7 @@ func (h *InteractionHandler) Unbookmark(c echo.Context) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: "POST_NOT_FOUND", Message: "投稿が見つかりません"})
 		}
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "ブックマーク解除に失敗しました"})
+		return httperr.Internal(c, "ブックマーク解除に失敗しました", err)
 	}
 
 	return c.NoContent(http.StatusNoContent)
@@ -266,7 +267,7 @@ func (h *InteractionHandler) GetBookmarks(c echo.Context) error {
 
 	resp, err := h.bookmarkSvc.GetBookmarks(c.Request().Context(), userID, cursor, limit)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "取得に失敗しました"})
+		return httperr.Internal(c, "取得に失敗しました", err)
 	}
 
 	return c.JSON(http.StatusOK, resp)

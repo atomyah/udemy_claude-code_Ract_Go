@@ -2096,6 +2096,10 @@ components:
         message:
           type: string
           example: リクエストが不正です
+        request_id:
+          description: RequestID はサーバーエラー（5xx）のときだけ返す。問い合わせ時にログと突き合わせるためのID
+          type: string
+          example: 0b5e2f9c-3d6a-4f0e-9a51-7c2d8e4b1f60
     github_com_atyahara_sns-backend_internal_dto.GoogleLoginRequest:
       type: object
       required:

@@ -19,13 +19,8 @@ type GoogleLoginRequest struct {
 	IDToken string `json:"id_token" example:"eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." validate:"required"`
 }
 
-// AuthResponse は認証成功レスポンス
+// AuthResponse は認証成功レスポンス。
+// トークンはレスポンスボディに含めず、HttpOnly Cookie（access_token / refresh_token）で返す
 type AuthResponse struct {
-	AccessToken string       `json:"access_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
-	User        UserResponse `json:"user"`
-}
-
-// RefreshResponse はトークンリフレッシュレスポンス
-type RefreshResponse struct {
-	AccessToken string `json:"access_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	User UserResponse `json:"user"`
 }

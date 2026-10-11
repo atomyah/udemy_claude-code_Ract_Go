@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -30,19 +32,16 @@ func TestAuthHandler_Register_Success(t *testing.T) {
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register",
 		`{"email":"taro@example.com","password":"password123","handle":"taro","display_name":"タロウ"}`)
 
-	require.NoError(t, NewAuthHandler(svc).Register(c))
+	require.NoError(t, newTestAuthHandler(svc).Register(c))
 
 	assert.Equal(t, http.StatusCreated, rec.Code)
 	var body dto.AuthResponse
 	decodeJSON(t, rec, &body)
-	assert.Equal(t, "access-token", body.AccessToken)
 	assert.Equal(t, "taro", body.User.Handle)
 
-	// リフレッシュトークンはHttpOnly Cookieで返す（localStorageに保存させない）
-	cookie := findCookie(rec, "refresh_token")
-	require.NotNil(t, cookie)
-	assert.True(t, cookie.HttpOnly)
-	assert.Equal(t, "refresh-token", cookie.Value)
+	// トークンはボディではなく HttpOnly Cookie で返す（localStorage に保存させない）
+	assertAuthCookies(t, rec, "access-token", "refresh-token")
+	assertNoTokenInBody(t, rec)
 }
 
 func TestAuthHandler_Register_MissingEmail_ReturnsJapaneseMessage(t *testing.T) {
@@ -50,7 +49,7 @@ func TestAuthHandler_Register_MissingEmail_ReturnsJapaneseMessage(t *testing.T) 
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register",
 		`{"email":"","password":"password123","handle":"taro","display_name":"タロウ"}`)
 
-	require.NoError(t, NewAuthHandler(svc).Register(c))
+	require.NoError(t, newTestAuthHandler(svc).Register(c))
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	body := decodeErrorResponse(t, rec)
@@ -63,7 +62,7 @@ func TestAuthHandler_Register_InvalidEmailFormat_ReturnsJapaneseMessage(t *testi
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register",
 		`{"email":"not-an-email","password":"password123","handle":"taro","display_name":"タロウ"}`)
 
-	require.NoError(t, NewAuthHandler(new(mockAuthSvc)).Register(c))
+	require.NoError(t, newTestAuthHandler(new(mockAuthSvc)).Register(c))
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Equal(t, "メールアドレスの形式が正しくありません", decodeErrorResponse(t, rec).Message)
@@ -73,7 +72,7 @@ func TestAuthHandler_Register_ShortPassword_ReturnsJapaneseMessage(t *testing.T)
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register",
 		`{"email":"taro@example.com","password":"short","handle":"taro","display_name":"タロウ"}`)
 
-	require.NoError(t, NewAuthHandler(new(mockAuthSvc)).Register(c))
+	require.NoError(t, newTestAuthHandler(new(mockAuthSvc)).Register(c))
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Equal(t, "パスワードは8文字以上で入力してください", decodeErrorResponse(t, rec).Message)
@@ -83,7 +82,7 @@ func TestAuthHandler_Register_ShortHandle_ReturnsJapaneseMessage(t *testing.T) {
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register",
 		`{"email":"taro@example.com","password":"password123","handle":"ab","display_name":"タロウ"}`)
 
-	require.NoError(t, NewAuthHandler(new(mockAuthSvc)).Register(c))
+	require.NoError(t, newTestAuthHandler(new(mockAuthSvc)).Register(c))
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Equal(t, "ユーザーIDは3文字以上で入力してください", decodeErrorResponse(t, rec).Message)
@@ -92,7 +91,7 @@ func TestAuthHandler_Register_ShortHandle_ReturnsJapaneseMessage(t *testing.T) {
 func TestAuthHandler_Register_BrokenJSON_Returns400(t *testing.T) {
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register", `{"email":`)
 
-	require.NoError(t, NewAuthHandler(new(mockAuthSvc)).Register(c))
+	require.NoError(t, newTestAuthHandler(new(mockAuthSvc)).Register(c))
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	body := decodeErrorResponse(t, rec)
@@ -107,7 +106,7 @@ func TestAuthHandler_Register_EmailTaken_Returns409(t *testing.T) {
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register",
 		`{"email":"taro@example.com","password":"password123","handle":"taro","display_name":"タロウ"}`)
 
-	require.NoError(t, NewAuthHandler(svc).Register(c))
+	require.NoError(t, newTestAuthHandler(svc).Register(c))
 
 	assert.Equal(t, http.StatusConflict, rec.Code)
 	body := decodeErrorResponse(t, rec)
@@ -122,7 +121,7 @@ func TestAuthHandler_Register_HandleTaken_Returns409(t *testing.T) {
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register",
 		`{"email":"taro@example.com","password":"password123","handle":"taro","display_name":"タロウ"}`)
 
-	require.NoError(t, NewAuthHandler(svc).Register(c))
+	require.NoError(t, newTestAuthHandler(svc).Register(c))
 
 	assert.Equal(t, http.StatusConflict, rec.Code)
 	assert.Equal(t, "このハンドルは既に使用されています", decodeErrorResponse(t, rec).Message)
@@ -135,12 +134,13 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/login",
 		`{"email":"taro@example.com","password":"password123"}`)
 
-	require.NoError(t, NewAuthHandler(svc).Login(c))
+	require.NoError(t, newTestAuthHandler(svc).Login(c))
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	var body dto.AuthResponse
 	decodeJSON(t, rec, &body)
-	assert.Equal(t, "access-token", body.AccessToken)
+	assert.Equal(t, "taro", body.User.Handle)
+	assertAuthCookies(t, rec, "access-token", "refresh-token")
 }
 
 func TestAuthHandler_Login_InvalidCredentials_Returns401(t *testing.T) {
@@ -150,7 +150,7 @@ func TestAuthHandler_Login_InvalidCredentials_Returns401(t *testing.T) {
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/login",
 		`{"email":"taro@example.com","password":"wrong-password"}`)
 
-	require.NoError(t, NewAuthHandler(svc).Login(c))
+	require.NoError(t, newTestAuthHandler(svc).Login(c))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	body := decodeErrorResponse(t, rec)
@@ -165,7 +165,7 @@ func TestAuthHandler_Login_SuspendedAccount_Returns401(t *testing.T) {
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/login",
 		`{"email":"taro@example.com","password":"password123"}`)
 
-	require.NoError(t, NewAuthHandler(svc).Login(c))
+	require.NoError(t, newTestAuthHandler(svc).Login(c))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	body := decodeErrorResponse(t, rec)
@@ -176,28 +176,169 @@ func TestAuthHandler_Login_SuspendedAccount_Returns401(t *testing.T) {
 func TestAuthHandler_Login_MissingPassword_ReturnsJapaneseMessage(t *testing.T) {
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/login", `{"email":"taro@example.com","password":""}`)
 
-	require.NoError(t, NewAuthHandler(new(mockAuthSvc)).Login(c))
+	require.NoError(t, newTestAuthHandler(new(mockAuthSvc)).Login(c))
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Equal(t, "パスワードを入力してください", decodeErrorResponse(t, rec).Message)
 }
 
-func TestAuthHandler_Logout_ClearsRefreshTokenCookie(t *testing.T) {
-	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/logout", "")
+// newTestAuthHandler は本番と同じ Cookie 属性（Secure + SameSite=None）の AuthHandler を作る
+func newTestAuthHandler(svc service.AuthService) *AuthHandler {
+	return NewAuthHandler(svc, AuthCookieConfig{Secure: true, SameSite: http.SameSiteNoneMode})
+}
 
-	require.NoError(t, NewAuthHandler(new(mockAuthSvc)).Logout(c))
+// assertAuthCookies はアクセストークン・リフレッシュトークンが HttpOnly / Secure / SameSite=None の Cookie で返ることを検証する
+func assertAuthCookies(t *testing.T, rec *httptest.ResponseRecorder, accessToken, refreshToken string) {
+	t.Helper()
+
+	access := findCookie(rec, "access_token")
+	require.NotNil(t, access, "access_token Cookie がない")
+	assert.Equal(t, accessToken, access.Value)
+	assert.True(t, access.HttpOnly, "JavaScript から読めないよう HttpOnly にする")
+	assert.True(t, access.Secure)
+	assert.Equal(t, http.SameSiteNoneMode, access.SameSite)
+	assert.Equal(t, "/api/v1", access.Path)
+	assert.Equal(t, 3600, access.MaxAge, "アクセストークンは1時間")
+
+	refresh := findCookie(rec, "refresh_token")
+	require.NotNil(t, refresh, "refresh_token Cookie がない")
+	assert.Equal(t, refreshToken, refresh.Value)
+	assert.True(t, refresh.HttpOnly, "JavaScript から読めないよう HttpOnly にする")
+	assert.True(t, refresh.Secure)
+	assert.Equal(t, http.SameSiteNoneMode, refresh.SameSite)
+	assert.Equal(t, "/api/v1/auth", refresh.Path, "リフレッシュトークンは認証APIにだけ送る")
+	assert.Equal(t, 7*24*3600, refresh.MaxAge, "リフレッシュトークンは7日")
+
+	// Set-Cookie ヘッダーの文字列としても属性が付いていること
+	for _, h := range rec.Header().Values("Set-Cookie") {
+		assert.Contains(t, h, "HttpOnly")
+		assert.Contains(t, h, "Secure")
+		assert.Contains(t, h, "SameSite=None")
+	}
+}
+
+// assertNoTokenInBody はレスポンスボディにトークンが含まれないことを検証する（JavaScript から読めないようにする）
+func assertNoTokenInBody(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	body := rec.Body.String()
+	assert.NotContains(t, body, "access_token")
+	assert.NotContains(t, body, "refresh_token")
+	assert.NotContains(t, body, "access-token")
+	assert.NotContains(t, body, "refresh-token")
+}
+
+// assertAuthCookiesCleared は認証 Cookie が削除（Max-Age<0 で上書き）されたことを検証する
+func assertAuthCookiesCleared(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	for name, path := range map[string]string{"access_token": "/api/v1", "refresh_token": "/api/v1/auth"} {
+		cookie := findCookie(rec, name)
+		require.NotNil(t, cookie, "%s Cookie の削除指示がない", name)
+		assert.Equal(t, "", cookie.Value)
+		assert.Less(t, cookie.MaxAge, 0)
+		assert.Equal(t, path, cookie.Path, "発行時と同じ Path でないと削除されない")
+		assert.True(t, cookie.HttpOnly)
+	}
+}
+
+func TestAuthHandler_Login_SetsHttpOnlyCookies(t *testing.T) {
+	svc := new(mockAuthSvc)
+	svc.On("Login", mock.Anything, mock.AnythingOfType("*dto.LoginRequest")).Return(sampleAuthResult(), nil)
+
+	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/login",
+		`{"email":"taro@example.com","password":"password123"}`)
+
+	require.NoError(t, newTestAuthHandler(svc).Login(c))
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assertAuthCookies(t, rec, "access-token", "refresh-token")
+	assertNoTokenInBody(t, rec)
+}
+
+func TestAuthHandler_DevelopmentWithoutSecure_UsesSameSiteLax(t *testing.T) {
+	// 開発環境で COOKIE_SECURE=false にしたとき（Safari など）は SameSite=Lax になる
+	svc := new(mockAuthSvc)
+	svc.On("Login", mock.Anything, mock.Anything).Return(sampleAuthResult(), nil)
+	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/login",
+		`{"email":"taro@example.com","password":"password123"}`)
+
+	h := NewAuthHandler(svc, AuthCookieConfig{Secure: false, SameSite: http.SameSiteLaxMode})
+	require.NoError(t, h.Login(c))
+
+	access := findCookie(rec, "access_token")
+	require.NotNil(t, access)
+	assert.True(t, access.HttpOnly, "Secure を外しても HttpOnly は必ず付ける")
+	assert.False(t, access.Secure)
+	assert.Equal(t, http.SameSiteLaxMode, access.SameSite)
+}
+
+func TestAuthHandler_Logout_RevokesTokenAndClearsCookies(t *testing.T) {
+	svc := new(mockAuthSvc)
+	svc.On("Logout", mock.Anything, "refresh-token").Return(nil)
+
+	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/logout", "")
+	c.Request().AddCookie(&http.Cookie{Name: "refresh_token", Value: "refresh-token"})
+
+	require.NoError(t, newTestAuthHandler(svc).Logout(c))
 
 	assert.Equal(t, http.StatusNoContent, rec.Code)
-	cookie := findCookie(rec, "refresh_token")
-	require.NotNil(t, cookie)
-	assert.Equal(t, "", cookie.Value)
-	assert.True(t, cookie.MaxAge < 0)
+	svc.AssertExpectations(t)
+	assertAuthCookiesCleared(t, rec)
+}
+
+func TestAuthHandler_Logout_WithoutCookie_StillClearsCookies(t *testing.T) {
+	svc := new(mockAuthSvc)
+	svc.On("Logout", mock.Anything, "").Return(nil)
+
+	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/logout", "")
+
+	require.NoError(t, newTestAuthHandler(svc).Logout(c))
+
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+	assertAuthCookiesCleared(t, rec)
+}
+
+func TestAuthHandler_Logout_ServiceError_Returns500(t *testing.T) {
+	svc := new(mockAuthSvc)
+	svc.On("Logout", mock.Anything, "refresh-token").Return(errors.New("db down"))
+
+	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/logout", "")
+	c.Request().AddCookie(&http.Cookie{Name: "refresh_token", Value: "refresh-token"})
+
+	require.NoError(t, newTestAuthHandler(svc).Logout(c))
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Equal(t, "サーバーエラーが発生しました", decodeErrorResponse(t, rec).Message)
+}
+
+func TestAuthHandler_RevokeAll_RevokesAndClearsCookies(t *testing.T) {
+	userID := uuid.New()
+	svc := new(mockAuthSvc)
+	svc.On("RevokeAll", mock.Anything, userID).Return(nil)
+
+	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/revoke-all", "")
+	withAuth(c, userID)
+
+	require.NoError(t, newTestAuthHandler(svc).RevokeAll(c))
+
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+	svc.AssertExpectations(t)
+	assertAuthCookiesCleared(t, rec)
+}
+
+func TestAuthHandler_RevokeAll_Unauthenticated_Returns401(t *testing.T) {
+	svc := new(mockAuthSvc)
+	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/revoke-all", "")
+
+	require.NoError(t, newTestAuthHandler(svc).RevokeAll(c))
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	svc.AssertNotCalled(t, "RevokeAll", mock.Anything, mock.Anything)
 }
 
 func TestAuthHandler_Refresh_MissingCookie_Returns401(t *testing.T) {
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/refresh", "")
 
-	require.NoError(t, NewAuthHandler(new(mockAuthSvc)).Refresh(c))
+	require.NoError(t, newTestAuthHandler(new(mockAuthSvc)).Refresh(c))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	body := decodeErrorResponse(t, rec)
@@ -205,40 +346,76 @@ func TestAuthHandler_Refresh_MissingCookie_Returns401(t *testing.T) {
 	assert.Equal(t, "Refresh Tokenが見つかりません", body.Message)
 }
 
-func TestAuthHandler_Refresh_ExpiredToken_Returns401(t *testing.T) {
+func TestAuthHandler_Refresh_Success_RotatesCookies(t *testing.T) {
 	svc := new(mockAuthSvc)
-	svc.On("RefreshAccessToken", mock.Anything, "expired").Return(nil, service.ErrExpiredToken)
+	svc.On("Refresh", mock.Anything, "old-refresh-token").Return(&service.AuthResult{
+		AccessToken:  "new-access-token",
+		RefreshToken: "new-refresh-token",
+		User:         dto.UserResponse{ID: uuid.NewString(), Handle: "taro"},
+	}, nil)
 
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/refresh", "")
-	c.Request().AddCookie(&http.Cookie{Name: "refresh_token", Value: "expired"})
+	c.Request().AddCookie(&http.Cookie{Name: "refresh_token", Value: "old-refresh-token"})
 
-	require.NoError(t, NewAuthHandler(svc).Refresh(c))
-
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	body := decodeErrorResponse(t, rec)
-	assert.Equal(t, "EXPIRED_TOKEN", body.Code)
-	assert.Equal(t, "Refresh Tokenの有効期限が切れています", body.Message)
-}
-
-func TestAuthHandler_Refresh_Success(t *testing.T) {
-	svc := new(mockAuthSvc)
-	svc.On("RefreshAccessToken", mock.Anything, "valid").Return(&dto.RefreshResponse{AccessToken: "new-access-token"}, nil)
-
-	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/refresh", "")
-	c.Request().AddCookie(&http.Cookie{Name: "refresh_token", Value: "valid"})
-
-	require.NoError(t, NewAuthHandler(svc).Refresh(c))
+	require.NoError(t, newTestAuthHandler(svc).Refresh(c))
 
 	assert.Equal(t, http.StatusOK, rec.Code)
-	var body dto.RefreshResponse
+	assertAuthCookies(t, rec, "new-access-token", "new-refresh-token")
+	var body dto.AuthResponse
 	decodeJSON(t, rec, &body)
-	assert.Equal(t, "new-access-token", body.AccessToken)
+	assert.Equal(t, "taro", body.User.Handle)
+	assert.NotContains(t, rec.Body.String(), "new-access-token")
+	assert.NotContains(t, rec.Body.String(), "new-refresh-token")
+}
+
+func TestAuthHandler_Refresh_Errors(t *testing.T) {
+	tests := []struct {
+		name    string
+		err     error
+		code    string
+		message string
+	}{
+		{"期限切れ", service.ErrExpiredToken, "EXPIRED_TOKEN", "ログインの有効期限が切れました。再度ログインしてください"},
+		{"不明なトークン", service.ErrInvalidToken, "INVALID_TOKEN", "ログイン情報が無効です。再度ログインしてください"},
+		{"失効済み", service.ErrRevokedToken, "INVALID_TOKEN", "ログイン情報が無効です。再度ログインしてください"},
+		{"使用済みトークンの再利用", service.ErrTokenReused, "INVALID_TOKEN", "ログイン情報が無効です。再度ログインしてください"},
+		{"アカウント停止", service.ErrAccountSuspended, "ACCOUNT_SUSPENDED", "このアカウントは停止されています"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := new(mockAuthSvc)
+			svc.On("Refresh", mock.Anything, "token").Return(nil, tt.err)
+			c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/refresh", "")
+			c.Request().AddCookie(&http.Cookie{Name: "refresh_token", Value: "token"})
+
+			require.NoError(t, newTestAuthHandler(svc).Refresh(c))
+
+			assert.Equal(t, http.StatusUnauthorized, rec.Code)
+			body := decodeErrorResponse(t, rec)
+			assert.Equal(t, tt.code, body.Code)
+			assert.Equal(t, tt.message, body.Message)
+			// 使えないトークンの Cookie は削除して、以後のリフレッシュを止める
+			assertAuthCookiesCleared(t, rec)
+		})
+	}
+}
+
+func TestAuthHandler_Refresh_InternalError_Returns500(t *testing.T) {
+	svc := new(mockAuthSvc)
+	svc.On("Refresh", mock.Anything, "token").Return(nil, errors.New("db down"))
+	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/refresh", "")
+	c.Request().AddCookie(&http.Cookie{Name: "refresh_token", Value: "token"})
+
+	require.NoError(t, newTestAuthHandler(svc).Refresh(c))
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Nil(t, findCookie(rec, "refresh_token"), "一時的なエラーでは Cookie を消さない")
 }
 
 func TestAuthHandler_GoogleLogin_MissingIDToken_ReturnsJapaneseMessage(t *testing.T) {
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/google", `{"id_token":""}`)
 
-	require.NoError(t, NewAuthHandler(new(mockAuthSvc)).GoogleLogin(c))
+	require.NoError(t, newTestAuthHandler(new(mockAuthSvc)).GoogleLogin(c))
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Equal(t, "IDトークンを入力してください", decodeErrorResponse(t, rec).Message)
@@ -250,7 +427,7 @@ func TestAuthHandler_GoogleLogin_InvalidIDToken_Returns401(t *testing.T) {
 
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/google", `{"id_token":"dummy"}`)
 
-	require.NoError(t, NewAuthHandler(svc).GoogleLogin(c))
+	require.NoError(t, newTestAuthHandler(svc).GoogleLogin(c))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Equal(t, "Google IDトークンが無効です", decodeErrorResponse(t, rec).Message)
@@ -327,7 +504,7 @@ func TestAuthHandler_Register_BoundaryValues(t *testing.T) {
 				tt.password, tt.handle)
 			c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register", body)
 
-			require.NoError(t, NewAuthHandler(svc).Register(c))
+			require.NoError(t, newTestAuthHandler(svc).Register(c))
 
 			assert.Equal(t, tt.wantStatus, rec.Code)
 			if tt.wantMsg != "" {
@@ -353,7 +530,7 @@ func TestAuthHandler_Register_MultibytePasswordExceedingBcryptLimit(t *testing.T
 	body := fmt.Sprintf(`{"email":"taro@example.com","password":%q,"handle":"taro","display_name":"タロウ"}`, password)
 	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register", body)
 
-	require.NoError(t, NewAuthHandler(svc).Register(c))
+	require.NoError(t, newTestAuthHandler(svc).Register(c))
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	errBody := decodeErrorResponse(t, rec)

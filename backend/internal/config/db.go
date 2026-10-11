@@ -41,6 +41,7 @@ func NewDB(cfg *Config) *gorm.DB {
 			&model.Hashtag{},
 			&model.PostHashtag{},
 			&model.Notification{},
+			&model.RefreshToken{},
 		); err != nil {
 			log.Fatalf("マイグレーション失敗: %v", err)
 		}

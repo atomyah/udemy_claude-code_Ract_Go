@@ -14,7 +14,7 @@
 // @securityDefinitions.apikey BearerAuth
 // @in                         header
 // @name                       Authorization
-// @description                JWT Access Token を入力してください。形式: "Bearer {token}"
+// @description                ブラウザは HttpOnly Cookie（access_token）で自動送信される。ブラウザ以外のクライアントは "Bearer {token}" 形式でも送れる
 
 // @tag.name         auth
 // @tag.description  ユーザー認証（登録・ログイン・トークン管理）
@@ -70,6 +70,7 @@ func main() {
 	bookmarkRepo := repository.NewBookmarkRepository(db)
 	notificationRepo := repository.NewNotificationRepository(db)
 	searchRepo := repository.NewSearchRepository(db)
+	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
 
 	// Firebaseは開発・本番では必須。テスト環境（ENV=test）では認証情報がなくても
 	// サーバーを起動できるようにする（E2Eテストはメール＋パスワード認証のみ使うため）
@@ -81,7 +82,7 @@ func main() {
 		log.Printf("firebase app init skipped (ENV=test): %v", err)
 		fbApp = nil
 	}
-	authSvc := service.NewAuthService(cfg, userRepo, fbApp)
+	authSvc := service.NewAuthService(cfg, userRepo, refreshTokenRepo, fbApp)
 	notificationSvc := service.NewNotificationService(notificationRepo)
 	storageSvc := service.NewStorageService(cfg, fbApp)
 	userSvc := service.NewUserService(userRepo, followRepo, notificationSvc)
@@ -91,9 +92,12 @@ func main() {
 	bookmarkSvc := service.NewBookmarkService(postRepo, bookmarkRepo, postSvc)
 	commentSvc := service.NewCommentService(postRepo, postSvc, notificationSvc)
 	searchSvc := service.NewSearchService(searchRepo, hashtagRepo, postRepo, followRepo, postSvc)
-	adminSvc := service.NewAdminService(postRepo, userRepo)
+	adminSvc := service.NewAdminService(postRepo, userRepo, refreshTokenRepo)
 
-	authHandler := handler.NewAuthHandler(authSvc)
+	authHandler := handler.NewAuthHandler(authSvc, handler.AuthCookieConfig{
+		Secure:   cfg.CookieSecure,
+		SameSite: cfg.CookieSameSite(),
+	})
 	userHandler := handler.NewUserHandler(userRepo, storageSvc, userSvc, postSvc)
 	postHandler := handler.NewPostHandler(postSvc, commentSvc)
 	interactionHandler := handler.NewInteractionHandler(likeSvc, repostSvc, bookmarkSvc)
@@ -128,6 +132,8 @@ func main() {
 			echo.HeaderRetryAfter,
 		},
 	}))
+	// 認証 Cookie は SameSite=None のため、状態を変更するリクエストは Origin を検証して CSRF を防ぐ
+	e.Use(appMiddleware.OriginCheck(cfg.AllowedOrigins()))
 
 	if cfg.IsDevelopment() {
 		e.GET("/swagger/*", echoSwagger.WrapHandler)
@@ -144,7 +150,7 @@ func main() {
 
 	jwtMiddleware := appMiddleware.JWTAuth(cfg.JWTSecret)
 	optionalAuthMiddleware := appMiddleware.OptionalJWTAuth(cfg.JWTSecret)
-	adminMiddleware := appMiddleware.AdminOnly()
+	adminMiddleware := appMiddleware.AdminOnly(userRepo)
 
 	// レートリミット（インメモリ・fixed window。Cloud Run の max instances = 1 構成が前提）
 	// 認証系: IP 単位で API ごとに 5 回/分。一般: 認証済みはユーザーID・未認証は IP 単位で API ごとに 60 回/分
@@ -159,6 +165,8 @@ func main() {
 	auth.POST("/google", authHandler.GoogleLogin, authRateLimit)
 	auth.POST("/logout", authHandler.Logout, generalRateLimit)
 	auth.POST("/refresh", authHandler.Refresh, generalRateLimit)
+	// 全デバイスからログアウト（要認証）。ユーザーID単位で数えるため、トークン確認 → レート制限 → 必須認証の順に置く
+	auth.POST("/revoke-all", authHandler.RevokeAll, optionalAuthMiddleware, generalRateLimit, jwtMiddleware)
 
 	// 認証系以外のAPI。トークンがあれば先に userID を確定させ、ユーザーID単位でレート制限する。
 	// 無効なトークンのリクエストも IP 単位で制限されるよう、必須認証（jwtMiddleware）はレート制限の後に置く

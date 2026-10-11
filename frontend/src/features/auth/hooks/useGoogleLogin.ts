@@ -4,16 +4,17 @@ import { signInWithGoogle } from '../firebase';
 import { loginWithGoogle } from '../api';
 
 export const useGoogleLogin = () => {
-  const { loginWithToken } = useAuth();
+  const { loginWithUser } = useAuth();
 
   return useMutation({
     mutationFn: async () => {
       const idToken = await signInWithGoogle();
       return loginWithGoogle({ id_token: idToken });
     },
-    onSuccess: ({ access_token, user }) => {
-      if (access_token && user) {
-        loginWithToken(access_token, user);
+    // トークンはバックエンドが HttpOnly Cookie で発行済み。ここではユーザー情報だけを反映する
+    onSuccess: ({ user }) => {
+      if (user) {
+        loginWithUser(user);
       }
     },
   });

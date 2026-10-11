@@ -20,7 +20,6 @@ export type NotificationListResponse =
   Schemas['github_com_atyahara_sns-backend_internal_dto.NotificationListResponse'];
 
 export type AuthResponse = Schemas['github_com_atyahara_sns-backend_internal_dto.AuthResponse'];
-export type RefreshResponse = Schemas['github_com_atyahara_sns-backend_internal_dto.RefreshResponse'];
 export type LoginRequest = Schemas['github_com_atyahara_sns-backend_internal_dto.LoginRequest'];
 export type RegisterRequest = Schemas['github_com_atyahara_sns-backend_internal_dto.RegisterRequest'];
 export type GoogleLoginRequest = Schemas['github_com_atyahara_sns-backend_internal_dto.GoogleLoginRequest'];

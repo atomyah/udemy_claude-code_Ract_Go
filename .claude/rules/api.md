@@ -160,8 +160,8 @@ GET /api/v1/posts?cursor=<uuid>&limit=20
 
 ## 認証
 
-- 保護されたエンドポイントは `Authorization: Bearer <access_token>` ヘッダーが必要。
-- Swagger 定義に `securityDefinitions` で `BearerAuth` を定義し、各エンドポイントに `// @Security BearerAuth` を付ける。
+- 保護されたエンドポイントは HttpOnly Cookie `access_token` で認証する（ブラウザ以外のクライアントは `Authorization: Bearer <access_token>` ヘッダーでも可）。
+- Swagger 定義に `securityDefinitions` で `BearerAuth` を定義し、各エンドポイントに `// @Security BearerAuth` を付ける（swaggo が出力する Swagger 2.0 は Cookie 認証を表現できないため、ヘッダー方式で文書化する）。
 
 ---
 

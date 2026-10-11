@@ -114,7 +114,7 @@ if cfg.Env == "production" {
 
 - 本番環境は必ず HTTPS を使う（Render / Cloud Run / Firebase Hosting はデフォルト HTTPS）。
 - HTTP → HTTPS リダイレクトはデプロイ先のプラットフォームに任せる。
-- Cookie の `Secure` 属性は本番環境でのみ有効にする（開発では false）。
+- 認証 Cookie は全環境で `HttpOnly; Secure; SameSite=None` を既定とする（`http://localhost` でも主要ブラウザは Secure Cookie を扱える）。開発環境のみ `COOKIE_SECURE=false` で Secure を外せる（`SameSite=Lax` になる）。
 
 ---
 

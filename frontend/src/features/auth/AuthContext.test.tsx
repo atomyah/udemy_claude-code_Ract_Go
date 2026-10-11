@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import type { ReactNode } from 'react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { UserResponse } from '../../api/types';
 import { AuthProvider, useAuth } from './AuthContext';
@@ -16,26 +17,33 @@ vi.mock('./api', () => ({
   register: vi.fn(),
 }));
 
-const setAccessTokenMock = vi.fn();
-const clearAccessTokenMock = vi.fn();
+// client.ts に登録されたセッション切れハンドラーを取り出して、テストから呼べるようにする
+let sessionExpiredHandler: (() => void) | null = null;
 
 vi.mock('../../api/client', () => ({
-  setAccessToken: (token: string) => setAccessTokenMock(token),
-  clearAccessToken: () => clearAccessTokenMock(),
-  setSessionExpiredHandler: vi.fn(),
+  setSessionExpiredHandler: (handler: () => void) => {
+    sessionExpiredHandler = handler;
+  },
 }));
 
 const user: UserResponse = { id: 'u1', handle: 'taro', display_name: 'タロウ' } as UserResponse;
 
-const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <MemoryRouter initialEntries={['/bookmarks']}>
+    <AuthProvider>{children}</AuthProvider>
+  </MemoryRouter>
+);
+
+/** useAuth と現在のパスを同時に取得する */
+const useAuthWithLocation = () => ({ auth: useAuth(), location: useLocation() });
 
 describe('AuthContext', () => {
   beforeEach(() => {
     getMeMock.mockReset();
     loginMock.mockReset();
     logoutMock.mockReset();
-    setAccessTokenMock.mockReset();
-    clearAccessTokenMock.mockReset();
+    sessionExpiredHandler = null;
+    localStorage.clear();
   });
 
   test('セッションが無いときは未ログイン状態になる', async () => {
@@ -48,7 +56,7 @@ describe('AuthContext', () => {
     expect(result.current.currentUser).toBeNull();
   });
 
-  test('既存セッションがあるとログイン済み状態で初期化される', async () => {
+  test('既存セッション（Cookie）があるとログイン済み状態で初期化される', async () => {
     getMeMock.mockResolvedValue(user);
 
     const { result } = renderHook(() => useAuth(), { wrapper });
@@ -58,9 +66,9 @@ describe('AuthContext', () => {
     expect(result.current.currentUser?.handle).toBe('taro');
   });
 
-  test('ログインするとトークンが保存されログイン済み状態になる', async () => {
+  test('ログインするとログイン済み状態になり、トークンを localStorage に保存しない', async () => {
     getMeMock.mockRejectedValue(new Error('unauthorized'));
-    loginMock.mockResolvedValue({ access_token: 'token-123', user });
+    loginMock.mockResolvedValue({ user });
 
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -70,11 +78,11 @@ describe('AuthContext', () => {
     });
 
     expect(loginMock).toHaveBeenCalledWith({ email: 'taro@example.com', password: 'password123' });
-    expect(setAccessTokenMock).toHaveBeenCalledWith('token-123');
     expect(result.current.isAuthenticated).toBe(true);
+    expect(localStorage.length).toBe(0);
   });
 
-  test('ログアウトするとトークンが削除され未ログイン状態に戻る', async () => {
+  test('ログアウトすると未ログイン状態に戻る', async () => {
     getMeMock.mockResolvedValue(user);
     logoutMock.mockResolvedValue(undefined);
 
@@ -85,7 +93,7 @@ describe('AuthContext', () => {
       await result.current.logout();
     });
 
-    expect(clearAccessTokenMock).toHaveBeenCalled();
+    expect(logoutMock).toHaveBeenCalled();
     expect(result.current.isAuthenticated).toBe(false);
     expect(result.current.currentUser).toBeNull();
   });
@@ -101,7 +109,34 @@ describe('AuthContext', () => {
       await result.current.logout().catch(() => undefined);
     });
 
-    expect(clearAccessTokenMock).toHaveBeenCalled();
     expect(result.current.isAuthenticated).toBe(false);
+  });
+
+  test('ログイン中にリフレッシュも失敗するとログアウト状態になりログイン画面へ遷移する', async () => {
+    getMeMock.mockResolvedValue(user);
+
+    const { result } = renderHook(() => useAuthWithLocation(), { wrapper });
+    await waitFor(() => expect(result.current.auth.isAuthenticated).toBe(true));
+    expect(result.current.location.pathname).toBe('/bookmarks');
+
+    act(() => {
+      sessionExpiredHandler?.();
+    });
+
+    expect(result.current.auth.isAuthenticated).toBe(false);
+    expect(result.current.location.pathname).toBe('/login');
+  });
+
+  test('未ログインのままセッション切れになっても画面遷移しない（公開ページの閲覧を妨げない）', async () => {
+    getMeMock.mockRejectedValue(new Error('unauthorized'));
+
+    const { result } = renderHook(() => useAuthWithLocation(), { wrapper });
+    await waitFor(() => expect(result.current.auth.isLoading).toBe(false));
+
+    act(() => {
+      sessionExpiredHandler?.();
+    });
+
+    expect(result.current.location.pathname).toBe('/bookmarks');
   });
 });

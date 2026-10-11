@@ -153,7 +153,7 @@ func TestAdminService_ListUsers_Success(t *testing.T) {
 	userRepo.On("FindAll", mock.Anything, (*time.Time)(nil), 20).
 		Return([]model.User{{ID: uuid.New(), Email: "taro@example.com", Handle: "taro", Role: "user"}}, nil, nil)
 
-	svc := NewAdminService(new(mockPostRepo), userRepo)
+	svc := NewAdminService(new(mockPostRepo), userRepo, new(mockRefreshTokenRepo))
 	resp, err := svc.ListUsers(context.Background(), "", 20)
 
 	require.NoError(t, err)

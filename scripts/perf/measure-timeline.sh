@@ -41,8 +41,12 @@ SQL_LOG_FILE="$OUT_DIR/timeline-$LABEL-sql.log"
 # ---- 1. 計測用ユーザーの登録 -------------------------------------------------------------
 suffix="$(date +%s)"
 register_body=$(printf '{"email":"perf_viewer_%s@example.com","password":"password123","handle":"perf_viewer_%s","display_name":"計測用閲覧ユーザー"}' "$suffix" "$suffix")
-register_resp=$(curl -sS -f -X POST "$API_BASE_URL/auth/register" -H 'Content-Type: application/json' -d "$register_body")
-TOKEN=$(echo "$register_resp" | jq -r '.access_token')
+register_headers=$(mktemp)
+register_resp=$(curl -sS -f -D "$register_headers" -X POST "$API_BASE_URL/auth/register" -H 'Content-Type: application/json' -d "$register_body")
+# トークンはレスポンスボディではなく HttpOnly Cookie（Set-Cookie: access_token=...）で返る。
+# 計測では Cookie の値を Authorization: Bearer ヘッダーで送る（ブラウザ以外のクライアント向けに受け付けている）
+TOKEN=$(tr -d '\r' < "$register_headers" | sed -n 's/^[Ss]et-[Cc]ookie: access_token=\([^;]*\).*/\1/p' | head -n 1)
+rm -f "$register_headers"
 VIEWER_ID=$(echo "$register_resp" | jq -r '.user.id')
 if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
   echo "ERROR: 計測用ユーザーのトークン取得に失敗しました: $register_resp" >&2

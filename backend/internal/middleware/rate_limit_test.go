@@ -150,7 +150,7 @@ func TestRateLimit_LimitsAreCountedPerAPI(t *testing.T) {
 func TestRateLimit_AuthAPIsAreLimitedPerIP(t *testing.T) {
 	clock := &fakeClock{now: rateLimitBaseTime}
 	e := newRateLimitedServer(2, 60, clock)
-	token := makeToken(t, testSecret, uuid.NewString(), "user", rateLimitBaseTime.Add(time.Hour))
+	token := makeToken(t, testSecret, uuid.NewString(), time.Now().Add(time.Hour))
 
 	sendN(t, e, 2, http.MethodPost, "/api/v1/auth/login", "203.0.113.1", "")
 	// トークンを付けても認証系は IP 単位なので同じ IP からは拒否される
@@ -162,9 +162,10 @@ func TestRateLimit_AuthAPIsAreLimitedPerIP(t *testing.T) {
 func TestRateLimit_GeneralAPIsAreLimitedPerUserWhenAuthenticated(t *testing.T) {
 	clock := &fakeClock{now: rateLimitBaseTime}
 	e := newRateLimitedServer(5, 2, clock)
-	exp := rateLimitBaseTime.Add(time.Hour)
-	userA := makeToken(t, testSecret, uuid.NewString(), "user", exp)
-	userB := makeToken(t, testSecret, uuid.NewString(), "user", exp)
+	// JWT の有効期限は実時刻で検証されるため、レートリミット用の固定時計ではなく time.Now() 基準にする
+	exp := time.Now().Add(time.Hour)
+	userA := makeToken(t, testSecret, uuid.NewString(), exp)
+	userB := makeToken(t, testSecret, uuid.NewString(), exp)
 
 	// 同じ IP でもユーザーが違えば別枠
 	sendN(t, e, 2, http.MethodGet, "/api/v1/posts", "203.0.113.1", userA)

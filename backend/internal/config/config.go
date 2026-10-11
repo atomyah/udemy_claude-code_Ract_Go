@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -27,6 +28,9 @@ type Config struct {
 	// TrustedProxyHops は X-Forwarded-For の右端から数えて信頼するプロキシの段数。
 	// 0 のときは X-Forwarded-For を見ず、TCP 接続元アドレスをクライアントIPとして扱う
 	TrustedProxyHops int
+	// CookieSecure は認証 Cookie に Secure 属性を付けるかどうか。
+	// 本番・テストは常に true（SameSite=None）。開発環境だけ COOKIE_SECURE=false で無効化できる（SameSite=Lax になる）
+	CookieSecure bool
 }
 
 // レートリミットの既定値（非機能要件: 認証系 5 回/分、一般 60 回/分）
@@ -66,6 +70,11 @@ func Load() *Config {
 		defaultHops = 1
 	}
 	cfg.TrustedProxyHops = getEnvInt("TRUSTED_PROXY_HOPS", defaultHops, 0)
+
+	// Secure Cookie は http://localhost でも Chrome / Edge / Firefox では使えるため既定は全環境で true。
+	// localhost を安全なオリジンとして扱わないブラウザ（Safari など）で開発するときだけ COOKIE_SECURE=false にする。
+	// フロント（localhost:5173）と API（localhost:8080）はポート違いの同一サイトなので SameSite=Lax でも Cookie は送られる
+	cfg.CookieSecure = !(cfg.IsDevelopment() && getEnv("COOKIE_SECURE", "true") == "false")
 
 	if cfg.JWTSecret == "" {
 		log.Fatal("JWT_SECRET is required")
@@ -142,4 +151,14 @@ func getEnvInt(key string, fallback, min int) int {
 		return fallback
 	}
 	return n
+}
+
+// CookieSameSite は認証 Cookie の SameSite 属性を返す。
+// フロントエンドとAPIが別オリジン（本番は別ドメイン）のため None にする。None は Secure 必須なので、
+// 開発環境で Secure を外したときだけ Lax にする
+func (c *Config) CookieSameSite() http.SameSite {
+	if c.CookieSecure {
+		return http.SameSiteNoneMode
+	}
+	return http.SameSiteLaxMode
 }

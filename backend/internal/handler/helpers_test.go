@@ -66,7 +66,6 @@ func newFileFormContext(t *testing.T, method, target, field, filename string, co
 // withAuth は認証済みユーザーをコンテキストにセットする（JWTミドルウェア通過後の状態を再現）
 func withAuth(c echo.Context, userID uuid.UUID) echo.Context {
 	c.Set("userID", userID)
-	c.Set("userRole", "user")
 	return c
 }
 

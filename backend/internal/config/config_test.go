@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -178,4 +179,31 @@ func TestLoad_TrustedProxyHops(t *testing.T) {
 	assert.Equal(t, 2, Load().TrustedProxyHops)
 	t.Setenv("TRUSTED_PROXY_HOPS", "-1")
 	assert.Equal(t, 1, Load().TrustedProxyHops, "負の値は既定値に戻す")
+}
+
+func TestLoad_CookieSecure(t *testing.T) {
+	t.Setenv("JWT_SECRET", "secret")
+	t.Setenv("JWT_REFRESH_SECRET", "refresh-secret")
+
+	// 既定は全環境で Secure + SameSite=None
+	t.Setenv("COOKIE_SECURE", "")
+	for _, env := range []string{"development", "test", "production"} {
+		t.Setenv("ENV", env)
+		cfg := Load()
+		assert.True(t, cfg.CookieSecure, env)
+		assert.Equal(t, http.SameSiteNoneMode, cfg.CookieSameSite(), env)
+	}
+
+	// 開発環境だけ COOKIE_SECURE=false で Secure を外せる（SameSite=Lax になる）
+	t.Setenv("COOKIE_SECURE", "false")
+	t.Setenv("ENV", "development")
+	cfg := Load()
+	assert.False(t, cfg.CookieSecure)
+	assert.Equal(t, http.SameSiteLaxMode, cfg.CookieSameSite())
+
+	// 本番・テストでは設定しても無視する
+	for _, env := range []string{"test", "production"} {
+		t.Setenv("ENV", env)
+		assert.True(t, Load().CookieSecure, env)
+	}
 }

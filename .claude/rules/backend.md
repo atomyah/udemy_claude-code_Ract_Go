@@ -105,8 +105,8 @@ func NewPostService(repo PostRepository) *postService {
 
 ## JWT 認証
 
-- Access Token: 有効期限 15 分、`Authorization: Bearer <token>` ヘッダーで受け取る。
-- Refresh Token: 有効期限 7 日、HttpOnly Cookie で送受信する。
+- Access Token: 有効期限 1 時間、ペイロードは `user_id` と `exp` のみ。HttpOnly Cookie `access_token` で受け取る（ブラウザ以外向けに `Authorization: Bearer` も可）。
+- Refresh Token: 有効期限 7 日、HttpOnly Cookie で送受信し、DB（`refresh_tokens`）でローテーション・失効を管理する。詳細は `rules/auth.md`。
 - JWT ミドルウェアを `middleware/auth.go` に実装し、保護ルートに適用する。
 - `echo.Context` のカスタムキーでユーザー ID を取り出せるようにする。
 

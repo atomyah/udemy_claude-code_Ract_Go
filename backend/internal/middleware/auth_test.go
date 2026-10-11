@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/atyahara/sns-backend/internal/authtoken"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -16,17 +17,14 @@ import (
 
 const testSecret = "test-secret-for-middleware-unit-test"
 
-// makeToken はテスト用のJWTを生成する
-func makeToken(t *testing.T, secret, sub, role string, expiresAt time.Time) string {
+// makeToken はテスト用のアクセストークン（user_id と exp のみ）を生成する。
+// userID に UUID 以外の文字列も渡せるよう authtoken.IssueAccessToken を使わずに組み立てる
+func makeToken(t *testing.T, secret, userID string, expiresAt time.Time) string {
 	t.Helper()
 
-	claims := &JWTClaims{
-		Role: role,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   sub,
-			ExpiresAt: jwt.NewNumericDate(expiresAt),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
+	claims := &authtoken.AccessClaims{
+		UserID:           userID,
+		RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(expiresAt)},
 	}
 	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
 	require.NoError(t, err)
@@ -57,23 +55,20 @@ func decodeError(t *testing.T, rec *httptest.ResponseRecorder) map[string]string
 	return body
 }
 
-func TestJWTAuth_ValidToken_SetsUserIDAndRole(t *testing.T) {
+func TestJWTAuth_ValidToken_SetsUserID(t *testing.T) {
 	userID := uuid.New()
-	token := makeToken(t, testSecret, userID.String(), "user", time.Now().Add(15*time.Minute))
+	token := makeToken(t, testSecret, userID.String(), time.Now().Add(time.Hour))
 	c, rec := newContext("Bearer " + token)
 
 	var capturedID uuid.UUID
-	var capturedRole string
 	handler := JWTAuth(testSecret)(func(c echo.Context) error {
 		capturedID = c.Get("userID").(uuid.UUID)
-		capturedRole = c.Get("userRole").(string)
 		return okHandler(c)
 	})
 
 	require.NoError(t, handler(c))
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, userID, capturedID)
-	assert.Equal(t, "user", capturedRole)
 }
 
 func TestJWTAuth_MissingToken_Returns401(t *testing.T) {
@@ -97,7 +92,7 @@ func TestJWTAuth_MalformedAuthorizationHeader_Returns401(t *testing.T) {
 }
 
 func TestJWTAuth_InvalidSignature_Returns401(t *testing.T) {
-	token := makeToken(t, "another-secret", uuid.NewString(), "user", time.Now().Add(15*time.Minute))
+	token := makeToken(t, "another-secret", uuid.NewString(), time.Now().Add(15*time.Minute))
 	c, rec := newContext("Bearer " + token)
 
 	require.NoError(t, JWTAuth(testSecret)(okHandler)(c))
@@ -109,7 +104,7 @@ func TestJWTAuth_InvalidSignature_Returns401(t *testing.T) {
 }
 
 func TestJWTAuth_ExpiredToken_Returns401(t *testing.T) {
-	token := makeToken(t, testSecret, uuid.NewString(), "user", time.Now().Add(-1*time.Minute))
+	token := makeToken(t, testSecret, uuid.NewString(), time.Now().Add(-1*time.Minute))
 	c, rec := newContext("Bearer " + token)
 
 	require.NoError(t, JWTAuth(testSecret)(okHandler)(c))
@@ -121,7 +116,7 @@ func TestJWTAuth_ExpiredToken_Returns401(t *testing.T) {
 }
 
 func TestJWTAuth_SubjectIsNotUUID_Returns401(t *testing.T) {
-	token := makeToken(t, testSecret, "not-a-uuid", "user", time.Now().Add(15*time.Minute))
+	token := makeToken(t, testSecret, "not-a-uuid", time.Now().Add(15*time.Minute))
 	c, rec := newContext("Bearer " + token)
 
 	require.NoError(t, JWTAuth(testSecret)(okHandler)(c))
@@ -160,7 +155,7 @@ func TestOptionalJWTAuth_InvalidToken_PassesThroughWithoutUserID(t *testing.T) {
 
 func TestOptionalJWTAuth_ValidToken_SetsUserID(t *testing.T) {
 	userID := uuid.New()
-	token := makeToken(t, testSecret, userID.String(), "admin", time.Now().Add(15*time.Minute))
+	token := makeToken(t, testSecret, userID.String(), time.Now().Add(15*time.Minute))
 	c, rec := newContext("Bearer " + token)
 
 	var capturedID uuid.UUID
@@ -175,7 +170,7 @@ func TestOptionalJWTAuth_ValidToken_SetsUserID(t *testing.T) {
 }
 
 func TestOptionalJWTAuth_SubjectIsNotUUID_PassesThroughWithoutUserID(t *testing.T) {
-	token := makeToken(t, testSecret, "not-a-uuid", "user", time.Now().Add(15*time.Minute))
+	token := makeToken(t, testSecret, "not-a-uuid", time.Now().Add(15*time.Minute))
 	c, rec := newContext("Bearer " + token)
 
 	var hasUserID bool
@@ -187,4 +182,65 @@ func TestOptionalJWTAuth_SubjectIsNotUUID_PassesThroughWithoutUserID(t *testing.
 	require.NoError(t, handler(c))
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.False(t, hasUserID)
+}
+
+// newCookieContext は access_token Cookie 付きのechoコンテキストを作る（ブラウザからのリクエスト）
+func newCookieContext(token string) (echo.Context, *httptest.ResponseRecorder) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
+	req.AddCookie(&http.Cookie{Name: authtoken.AccessTokenCookie, Value: token})
+	rec := httptest.NewRecorder()
+	return e.NewContext(req, rec), rec
+}
+
+func TestJWTAuth_TokenInCookie_SetsUserID(t *testing.T) {
+	userID := uuid.New()
+	c, rec := newCookieContext(makeToken(t, testSecret, userID.String(), time.Now().Add(time.Hour)))
+
+	var capturedID uuid.UUID
+	handler := JWTAuth(testSecret)(func(c echo.Context) error {
+		capturedID = c.Get("userID").(uuid.UUID)
+		return okHandler(c)
+	})
+
+	require.NoError(t, handler(c))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, userID, capturedID)
+}
+
+func TestJWTAuth_ExpiredTokenInCookie_ReturnsExpiredToken(t *testing.T) {
+	c, rec := newCookieContext(makeToken(t, testSecret, uuid.NewString(), time.Now().Add(-time.Second)))
+
+	require.NoError(t, JWTAuth(testSecret)(okHandler)(c))
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Equal(t, "EXPIRED_TOKEN", decodeError(t, rec)["code"], "フロントエンドはこの401を受けてリフレッシュする")
+}
+
+func TestJWTAuth_TokenWithoutExp_Returns401(t *testing.T) {
+	// exp のないトークンは無期限になってしまうため受け付けない
+	claims := &authtoken.AccessClaims{UserID: uuid.NewString()}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(testSecret))
+	require.NoError(t, err)
+	c, rec := newCookieContext(token)
+
+	require.NoError(t, JWTAuth(testSecret)(okHandler)(c))
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Equal(t, "INVALID_TOKEN", decodeError(t, rec)["code"])
+}
+
+func TestOptionalJWTAuth_TokenInCookie_SetsUserID(t *testing.T) {
+	userID := uuid.New()
+	c, rec := newCookieContext(makeToken(t, testSecret, userID.String(), time.Now().Add(time.Hour)))
+
+	var capturedID uuid.UUID
+	handler := OptionalJWTAuth(testSecret)(func(c echo.Context) error {
+		capturedID, _ = c.Get("userID").(uuid.UUID)
+		return okHandler(c)
+	})
+
+	require.NoError(t, handler(c))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, userID, capturedID)
 }

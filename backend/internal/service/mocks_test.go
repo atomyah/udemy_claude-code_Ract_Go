@@ -409,3 +409,29 @@ func postListOrNil(v interface{}) *dto.PostListResponse {
 	}
 	return v.(*dto.PostListResponse)
 }
+
+type mockRefreshTokenRepo struct{ mock.Mock }
+
+func (m *mockRefreshTokenRepo) Create(ctx context.Context, token *model.RefreshToken) error {
+	return m.Called(ctx, token).Error(0)
+}
+
+func (m *mockRefreshTokenRepo) FindByHash(ctx context.Context, tokenHash string) (*model.RefreshToken, error) {
+	args := m.Called(ctx, tokenHash)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.RefreshToken), args.Error(1)
+}
+
+func (m *mockRefreshTokenRepo) Rotate(ctx context.Context, oldID uuid.UUID, next *model.RefreshToken, now time.Time) error {
+	return m.Called(ctx, oldID, next, now).Error(0)
+}
+
+func (m *mockRefreshTokenRepo) RevokeFamily(ctx context.Context, familyID uuid.UUID, now time.Time) error {
+	return m.Called(ctx, familyID, now).Error(0)
+}
+
+func (m *mockRefreshTokenRepo) RevokeAllByUser(ctx context.Context, userID uuid.UUID, now time.Time) error {
+	return m.Called(ctx, userID, now).Error(0)
+}

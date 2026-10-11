@@ -71,6 +71,7 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "INTERNAL_ERROR", Message: "ユーザー情報の取得に失敗しました"})
 	}
 	resp.Email = &user.Email
+	resp.Role = &user.Role
 
 	return c.JSON(http.StatusOK, resp)
 }

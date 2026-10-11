@@ -5,39 +5,38 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
+	"github.com/atyahara/sns-backend/internal/authtoken"
 	"github.com/labstack/echo/v4"
 )
 
-type JWTClaims struct {
-	Role string `json:"role"`
-	jwt.RegisteredClaims
+// accessTokenFromRequest はアクセストークンを取り出す。
+// ブラウザ（フロントエンド）は HttpOnly Cookie で送る。Swagger UI・計測スクリプトなどブラウザ以外の
+// クライアント向けに Authorization: Bearer ヘッダーも受け付ける（ヘッダーは CSRF の対象にならない）
+func accessTokenFromRequest(c echo.Context) string {
+	if h := c.Request().Header.Get(echo.HeaderAuthorization); strings.HasPrefix(h, "Bearer ") {
+		return strings.TrimPrefix(h, "Bearer ")
+	}
+	if cookie, err := c.Cookie(authtoken.AccessTokenCookie); err == nil {
+		return cookie.Value
+	}
+	return ""
 }
 
+// JWTAuth はアクセストークンを検証し、userID を Context にセットする。トークンがない・無効なら 401 を返す
 func JWTAuth(secret string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			authHeader := c.Request().Header.Get("Authorization")
-			if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+			tokenStr := accessTokenFromRequest(c)
+			if tokenStr == "" {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
 					"code":    "MISSING_TOKEN",
 					"message": "認証トークンが必要です",
 				})
 			}
 
-			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-			claims := &JWTClaims{}
-
-			token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
-				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, jwt.ErrSignatureInvalid
-				}
-				return []byte(secret), nil
-			})
-
-			if err != nil || !token.Valid {
-				if errors.Is(err, jwt.ErrTokenExpired) {
+			userID, err := authtoken.ParseAccessToken(secret, tokenStr)
+			if err != nil {
+				if errors.Is(err, authtoken.ErrExpired) {
 					return c.JSON(http.StatusUnauthorized, map[string]string{
 						"code":    "EXPIRED_TOKEN",
 						"message": "トークンの有効期限が切れています",
@@ -49,51 +48,24 @@ func JWTAuth(secret string) echo.MiddlewareFunc {
 				})
 			}
 
-			userID, err := uuid.Parse(claims.Subject)
-			if err != nil {
-				return c.JSON(http.StatusUnauthorized, map[string]string{
-					"code":    "INVALID_TOKEN",
-					"message": "無効なトークンです",
-				})
-			}
-
 			c.Set("userID", userID)
-			c.Set("userRole", claims.Role)
 			return next(c)
 		}
 	}
 }
 
-// OptionalJWTAuth はトークンがあれば検証してuserID/userRoleをContextにセットするが、
+// OptionalJWTAuth はトークンがあれば検証して userID を Context にセットするが、
 // トークンがない/無効でも401にせずそのまま次のハンドラーに進む（公開エンドポイントの個人化用）
 func OptionalJWTAuth(secret string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			authHeader := c.Request().Header.Get("Authorization")
-			if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+			tokenStr := accessTokenFromRequest(c)
+			if tokenStr == "" {
 				return next(c)
 			}
-
-			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-			claims := &JWTClaims{}
-
-			token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
-				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, jwt.ErrSignatureInvalid
-				}
-				return []byte(secret), nil
-			})
-			if err != nil || !token.Valid {
-				return next(c)
+			if userID, err := authtoken.ParseAccessToken(secret, tokenStr); err == nil {
+				c.Set("userID", userID)
 			}
-
-			userID, err := uuid.Parse(claims.Subject)
-			if err != nil {
-				return next(c)
-			}
-
-			c.Set("userID", userID)
-			c.Set("userRole", claims.Role)
 			return next(c)
 		}
 	}

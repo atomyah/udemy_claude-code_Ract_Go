@@ -34,7 +34,7 @@ func TestMain(m *testing.M) {
 	}
 	if err := db.AutoMigrate(
 		&model.User{}, &model.Post{}, &model.Media{}, &model.Like{},
-		&model.Bookmark{}, &model.Follow{}, &model.Hashtag{}, &model.PostHashtag{}, &model.Notification{},
+		&model.Bookmark{}, &model.Follow{}, &model.Hashtag{}, &model.PostHashtag{}, &model.Notification{}, &model.RefreshToken{},
 	); err != nil {
 		log.Fatalf("テストDBマイグレーション失敗: %v", err)
 	}
@@ -61,7 +61,7 @@ func setupDB(t *testing.T) *gorm.DB {
 	}
 	assertNotParallel(t)
 
-	err := testDB.Exec(`TRUNCATE notifications, post_hashtags, hashtags, bookmarks, likes, follows, media, posts, users RESTART IDENTITY CASCADE`).Error
+	err := testDB.Exec(`TRUNCATE refresh_tokens, notifications, post_hashtags, hashtags, bookmarks, likes, follows, media, posts, users RESTART IDENTITY CASCADE`).Error
 	if err != nil {
 		t.Fatalf("テストデータのクリア失敗: %v", err)
 	}

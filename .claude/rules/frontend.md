@@ -104,7 +104,7 @@ useInfiniteQuery({
 ## 認証・API クライアント
 
 - Axios インスタンスは `api/client.ts` で一元管理する。
-- Access Token は Axios インターセプターでヘッダーに付与する。
+- トークンは HttpOnly Cookie でブラウザが自動送信する。`withCredentials: true` のみ設定し、`Authorization` ヘッダーの付与や `localStorage` への保存はしない（詳細は `rules/auth.md`）。
 - 401 レスポンス時にリフレッシュトークンで再取得し、失敗したらログアウトする。
 
 ---

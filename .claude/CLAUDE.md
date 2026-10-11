@@ -142,7 +142,7 @@ cd frontend && npm run gen:api
 1. **API first**: バックエンドの swaggo コメントで OpenAPI 定義を生成し、フロントエンドは openapi-typescript で型を使う。手書き型は作らない。
 2. **Cursor ベースのページネーション**: タイムライン・一覧系は `?cursor=<uuid>&limit=20` を使う。offset は使わない。
 3. **論理削除**: 投稿は `is_deleted = true` で論理削除。物理削除はしない。
-4. **JWT の扱い**: Access Token は `Authorization: Bearer <token>` ヘッダーで送る。Refresh Token は HttpOnly Cookie。
+4. **JWT の扱い**: Access Token（1 時間）・Refresh Token（7 日）とも HttpOnly Cookie（`Secure; SameSite=None`）で管理する。フロントエンドはトークンを扱わない（`localStorage`・`Authorization` ヘッダーは使わない）。Refresh Token は DB でローテーション・失効を管理する。詳細は `rules/auth.md`。
 5. **Firebase Storage**: ファイルアップロードはバックエンド経由（multipart を受け取り Firebase SDK でアップロード）。フロントから直接アップロードしない。
 6. **エラーレスポンス**: 全 API エラーは `{ "code": "ERROR_CODE", "message": "説明" }` の統一フォーマット。
 

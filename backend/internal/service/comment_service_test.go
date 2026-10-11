@@ -124,7 +124,7 @@ func TestAdminService_ForceDeletePost_SoftDeletes(t *testing.T) {
 	postRepo.On("FindByID", mock.Anything, postID).Return(&model.Post{ID: postID}, nil)
 	postRepo.On("SoftDelete", mock.Anything, postID).Return(nil)
 
-	svc := NewAdminService(postRepo, new(mockUserRepo))
+	svc := NewAdminService(postRepo, new(mockUserRepo), new(mockRefreshTokenRepo))
 
 	require.NoError(t, svc.ForceDeletePost(context.Background(), postID))
 	postRepo.AssertExpectations(t)
@@ -135,11 +135,15 @@ func TestAdminService_SuspendUser_Success(t *testing.T) {
 	userRepo := new(mockUserRepo)
 	userRepo.On("FindByID", mock.Anything, userID).Return(&model.User{ID: userID}, nil)
 	userRepo.On("Suspend", mock.Anything, userID).Return(nil)
+	refreshRepo := new(mockRefreshTokenRepo)
+	refreshRepo.On("RevokeAllByUser", mock.Anything, userID, mock.AnythingOfType("time.Time")).Return(nil)
 
-	svc := NewAdminService(new(mockPostRepo), userRepo)
+	svc := NewAdminService(new(mockPostRepo), userRepo, refreshRepo)
 
 	require.NoError(t, svc.SuspendUser(context.Background(), userID))
 	userRepo.AssertExpectations(t)
+	// 停止したユーザーは以後リフレッシュできないよう全リフレッシュトークンを失効させる
+	refreshRepo.AssertExpectations(t)
 }
 
 func TestAdminService_SuspendUser_NotFound(t *testing.T) {
@@ -147,7 +151,7 @@ func TestAdminService_SuspendUser_NotFound(t *testing.T) {
 	userRepo := new(mockUserRepo)
 	userRepo.On("FindByID", mock.Anything, userID).Return(nil, repository.ErrNotFound)
 
-	svc := NewAdminService(new(mockPostRepo), userRepo)
+	svc := NewAdminService(new(mockPostRepo), userRepo, new(mockRefreshTokenRepo))
 	err := svc.SuspendUser(context.Background(), userID)
 
 	assert.ErrorIs(t, err, repository.ErrNotFound)
@@ -160,7 +164,7 @@ func TestAdminService_UnsuspendUser_Success(t *testing.T) {
 	userRepo.On("FindByID", mock.Anything, userID).Return(&model.User{ID: userID, IsSuspended: true}, nil)
 	userRepo.On("Unsuspend", mock.Anything, userID).Return(nil)
 
-	svc := NewAdminService(new(mockPostRepo), userRepo)
+	svc := NewAdminService(new(mockPostRepo), userRepo, new(mockRefreshTokenRepo))
 
 	require.NoError(t, svc.UnsuspendUser(context.Background(), userID))
 	userRepo.AssertExpectations(t)

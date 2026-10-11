@@ -7,6 +7,7 @@
 - **更新履歴**:
   - 2026-10-11: 1-2（N+1）を解消し「達成」に更新。1-1 に実測値を追記。詳細は `docs/performance-timeline-report.md`
   - 2026-10-11: 3-4（レートリミット）を実装し「達成」に更新
+  - 2026-10-11: 3-2（認証トークンの HttpOnly Cookie 化・リフレッシュトークンの DB 管理）を実装し「達成」に更新
 
 ---
 
@@ -23,12 +24,12 @@
 | 2-2 | 運用・保守 | 自動テスト（ユニット + E2E） | 達成 | — |
 | 2-3 | 運用・保守 | 安全なエラーメッセージ | 部分的 | Medium |
 | 3-1 | セキュリティ | CORS（フロントのオリジンのみ・credentials: true） | 達成 | — |
-| 3-2 | セキュリティ | 認証（HttpOnly Cookie / SameSite=None; Secure / 1h・7d） | **未達成** | **High** |
+| 3-2 | セキュリティ | 認証（HttpOnly Cookie / SameSite=None; Secure / 1h・7d） | 達成 | — |
 | 3-3 | セキュリティ | 入力検証・サニタイズ | 部分的 | Medium |
 | 3-4 | セキュリティ | レートリミット（認証 5 回/分・一般 60 回/分） | 達成 | — |
 | 3-5 | セキュリティ | security-review の定期実施 | 部分的 | Low |
 
-集計: **達成 5 / 部分的 5 / 未達成 3**（初回診断時は 達成 3 / 部分的 5 / 未達成 5）
+集計: **達成 6 / 部分的 5 / 未達成 2**（初回診断時は 達成 3 / 部分的 5 / 未達成 5）
 
 ### 既存ルールとの矛盾（要判断）
 
@@ -214,8 +215,14 @@
 
 #### 3-2. 認証（HttpOnly Cookie・SameSite=None; Secure・アクセス 1 時間 / リフレッシュ 7 日）
 
-- **ステータス**: **未達成**
-- **根拠**:
+- **ステータス**: 達成（2026-10-11 対応）
+- **対応内容**:
+  - Access Token（JWT、ペイロードは `user_id` / `exp` のみ、1 時間）と Refresh Token（乱数、7 日）を `HttpOnly; Secure; SameSite=None` の Cookie で発行（`handler/auth_handler.go`、`internal/authtoken/`）。レスポンスボディにはトークンを含めない。
+  - Refresh Token は DB（`refresh_tokens`）に HMAC ハッシュで保存し、`POST /auth/refresh` でローテーション。使用済みトークンの再利用を検知したら系列ごと失効。`POST /auth/logout` は失効 + Cookie 削除、`POST /auth/revoke-all` で全デバイスの Refresh Token を失効。
+  - CSRF 対策として状態変更リクエストの Origin を検証（`middleware/origin_check.go`）。管理者判定はトークンではなく DB のロールで行う。
+  - フロントエンドは `withCredentials: true` のみ。401 で自動リフレッシュ → 再送、失敗したらログイン画面へ（`src/api/client.ts`、`AuthContext.tsx`）。
+  - 開発環境は既定で同じ属性（主要ブラウザは http://localhost で Secure Cookie を扱える）。Safari 等のみ `COOKIE_SECURE=false` で `SameSite=Lax` に切り替え可能。
+- **初回診断時の根拠**:
   - Access Token はレスポンスボディで返し（`auth_handler.go:68-71,115-118`）、フロントが `localStorage` に保存（`frontend/src/api/client.ts:4-8`）、`Authorization` ヘッダーで送信（`client.ts:15-21`、`middleware/auth.go` の `JWTAuth`）。→ HttpOnly Cookie 管理ではない。
   - Access Token 有効期限は **15 分**（`internal/service/auth_service.go:278`）。Refresh Token は 7 日（`auth_service.go:289`、`auth_handler.go` `setRefreshTokenCookie`）で要件どおり。
   - Refresh Token Cookie は `HttpOnly: true, Secure: true` だが **`SameSite: Strict`**（`auth_handler.go` `setRefreshTokenCookie` / `Logout`）。
@@ -321,15 +328,16 @@
 - [x] 429・ヘッダー・識別子・ウィンドウ切替・同時アクセスのテストを追加（`rate_limit_test.go`）
 - [ ] パスワードリセットAPIを実装する際に `authRateLimit` を付ける（現状APIなし）
 
-#### TODO-3: 認証トークンの HttpOnly Cookie 化（3-2）
-- [ ] Access Token を `HttpOnly; Secure; SameSite=None` Cookie で発行、有効期限 1 時間
-- [ ] Refresh Token Cookie を `SameSite=None` に変更
-- [ ] `JWTAuth` / `OptionalJWTAuth` を Cookie 対応
-- [ ] CSRF 対策（CSRF トークンまたは Origin 検証）を状態変更 API に追加
-- [ ] フロント: `localStorage` 保存・`Authorization` 付与を廃止、CSRF ヘッダー付与
-- [ ] Swagger `securityDefinitions` 更新 → `swag init` → `openapi.yaml` 再生成
-- [ ] `rules/auth.md` / `rules/frontend.md` を更新
-- [ ] ミドルウェアテスト・E2E（リロード後のログイン維持）を追加
+#### TODO-3: 認証トークンの HttpOnly Cookie 化（3-2）— 完了（2026-10-11）
+- [x] Access Token を `HttpOnly; Secure; SameSite=None` Cookie で発行、有効期限 1 時間（ペイロードは user_id / exp のみ）
+- [x] Refresh Token Cookie を `SameSite=None` に変更。DB（`refresh_tokens`）でローテーション・再利用検知・失効を管理
+- [x] `JWTAuth` / `OptionalJWTAuth` を Cookie 対応
+- [x] CSRF 対策（Origin 検証。`middleware/origin_check.go`）を状態変更 API に追加
+- [x] フロント: `localStorage` 保存・`Authorization` 付与を廃止（Origin 検証方式のため CSRF ヘッダーは不要）
+- [x] `swag init` → `openapi.yaml` 再生成（Swagger 2.0 は Cookie 認証を表現できないため `BearerAuth` の説明文のみ更新）
+- [x] `rules/auth.md` / `rules/frontend.md`（ほか backend / security / api）を更新
+- [x] ユニットテスト（発行・検証・リフレッシュ・失効・Cookie 属性）と E2E（`e2e/token.spec.ts`：期限切れ → 自動リフレッシュ → 操作継続など）を追加
+- [ ] 期限切れ・失効済みリフレッシュトークンの定期削除（テーブルが増え続けるため）
 
 #### TODO-4: リクエストボディ上限のミドルウェア化（1-3）
 - [ ] `middleware.BodyLimit` を JSON 系（1MB）・画像アップロード（6MB）・投稿（51MB）で適用

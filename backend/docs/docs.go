@@ -249,7 +249,7 @@ const docTemplate = `{
         },
         "/auth/google": {
             "post": {
-                "description": "Firebase AuthのIDトークンを検証し、初回は自動登録、JWTを返す",
+                "description": "Firebase AuthのIDトークンを検証し、初回は自動登録、Access Token・Refresh Token を HttpOnly Cookie で返す",
                 "consumes": [
                     "application/json"
                 ],
@@ -301,7 +301,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "メールアドレスとパスワードで認証し、Access Token（レスポンスボディ）とRefresh Token（HttpOnly Cookie）を返す",
+                "description": "メールアドレスとパスワードで認証し、Access Token・Refresh Token を HttpOnly Cookie（Set-Cookie）で返す",
                 "consumes": [
                     "application/json"
                 ],
@@ -353,12 +353,7 @@ const docTemplate = `{
         },
         "/auth/logout": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Refresh Token Cookie を削除する",
+                "description": "Refresh Token（Cookie）を DB 上で失効させ、access_token / refresh_token Cookie を削除する",
                 "produces": [
                     "application/json"
                 ],
@@ -381,23 +376,23 @@ const docTemplate = `{
         },
         "/auth/refresh": {
             "post": {
-                "description": "HttpOnly Cookie に保存されたRefresh Tokenを使いAccess Tokenを再発行する",
+                "description": "refresh_token Cookie を検証し、新しい Access Token と Refresh Token を Cookie で返す（古い Refresh Token は使用済みになる）",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "auth"
                 ],
-                "summary": "アクセストークンの更新",
+                "summary": "トークンの再発行",
                 "responses": {
                     "200": {
                         "description": "再発行成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.RefreshResponse"
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.AuthResponse"
                         }
                     },
                     "401": {
-                        "description": "Refresh Tokenが無効または期限切れ",
+                        "description": "Refresh Tokenが無効・失効済み・期限切れ",
                         "schema": {
                             "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
                         }
@@ -413,7 +408,7 @@ const docTemplate = `{
         },
         "/auth/register": {
             "post": {
-                "description": "メールアドレス・パスワード・ハンドル・表示名でユーザーを作成し、JWTを返す",
+                "description": "メールアドレス・パスワード・ハンドル・表示名でユーザーを作成し、Access Token・Refresh Token を HttpOnly Cookie で返す",
                 "consumes": [
                     "application/json"
                 ],
@@ -450,6 +445,40 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "メールアドレスまたはハンドルが既に使用されています",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "サーバーエラー",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/revoke-all": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "ログイン中ユーザーの全 Refresh Token を DB 上で失効させ、このブラウザの Cookie も削除する。他の端末は Access Token の期限（最長1時間）が切れた時点でログアウトされる",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "全デバイスからログアウト",
+                "responses": {
+                    "204": {
+                        "description": "失効成功"
+                    },
+                    "401": {
+                        "description": "未認証",
                         "schema": {
                             "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
                         }
@@ -2371,10 +2400,6 @@ const docTemplate = `{
         "github_com_atyahara_sns-backend_internal_dto.AuthResponse": {
             "type": "object",
             "properties": {
-                "access_token": {
-                    "type": "string",
-                    "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                },
                 "user": {
                     "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.UserResponse"
                 }
@@ -2677,15 +2702,6 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_atyahara_sns-backend_internal_dto.RefreshResponse": {
-            "type": "object",
-            "properties": {
-                "access_token": {
-                    "type": "string",
-                    "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                }
-            }
-        },
         "github_com_atyahara_sns-backend_internal_dto.RegisterRequest": {
             "type": "object",
             "required": [
@@ -2897,6 +2913,11 @@ const docTemplate = `{
                     "type": "string",
                     "example": "東京"
                 },
+                "role": {
+                    "description": "Role は本人の情報（ログイン・リフレッシュ・GET /users/me）のときだけ返す（他人のプロフィールでは省略）",
+                    "type": "string",
+                    "example": "user"
+                },
                 "theme": {
                     "type": "string",
                     "example": "light"
@@ -2910,7 +2931,7 @@ const docTemplate = `{
     },
     "securityDefinitions": {
         "BearerAuth": {
-            "description": "JWT Access Token を入力してください。形式: \"Bearer {token}\"",
+            "description": "ブラウザは HttpOnly Cookie（access_token）で自動送信される。ブラウザ以外のクライアントは \"Bearer {token}\" 形式でも送れる",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"

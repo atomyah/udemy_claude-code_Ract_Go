@@ -28,12 +28,17 @@ func (m *mockAuthSvc) Login(ctx context.Context, req *dto.LoginRequest) (*servic
 	return authResultOrNil(args.Get(0)), args.Error(1)
 }
 
-func (m *mockAuthSvc) RefreshAccessToken(ctx context.Context, refreshToken string) (*dto.RefreshResponse, error) {
+func (m *mockAuthSvc) Refresh(ctx context.Context, refreshToken string) (*service.AuthResult, error) {
 	args := m.Called(ctx, refreshToken)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*dto.RefreshResponse), args.Error(1)
+	return authResultOrNil(args.Get(0)), args.Error(1)
+}
+
+func (m *mockAuthSvc) Logout(ctx context.Context, refreshToken string) error {
+	return m.Called(ctx, refreshToken).Error(0)
+}
+
+func (m *mockAuthSvc) RevokeAll(ctx context.Context, userID uuid.UUID) error {
+	return m.Called(ctx, userID).Error(0)
 }
 
 func (m *mockAuthSvc) LoginWithGoogle(ctx context.Context, idToken string) (*service.AuthResult, error) {

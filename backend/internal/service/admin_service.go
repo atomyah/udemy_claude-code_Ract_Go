@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/atyahara/sns-backend/internal/dto"
 	"github.com/atyahara/sns-backend/internal/model"
@@ -19,12 +20,13 @@ type AdminService interface {
 }
 
 type adminService struct {
-	postRepo repository.PostRepository
-	userRepo repository.UserRepository
+	postRepo         repository.PostRepository
+	userRepo         repository.UserRepository
+	refreshTokenRepo repository.RefreshTokenRepository
 }
 
-func NewAdminService(postRepo repository.PostRepository, userRepo repository.UserRepository) AdminService {
-	return &adminService{postRepo: postRepo, userRepo: userRepo}
+func NewAdminService(postRepo repository.PostRepository, userRepo repository.UserRepository, refreshTokenRepo repository.RefreshTokenRepository) AdminService {
+	return &adminService{postRepo: postRepo, userRepo: userRepo, refreshTokenRepo: refreshTokenRepo}
 }
 
 func (s *adminService) ForceDeletePost(ctx context.Context, postID uuid.UUID) error {
@@ -38,7 +40,11 @@ func (s *adminService) SuspendUser(ctx context.Context, userID uuid.UUID) error 
 	if _, err := s.userRepo.FindByID(ctx, userID); err != nil {
 		return err
 	}
-	return s.userRepo.Suspend(ctx, userID)
+	if err := s.userRepo.Suspend(ctx, userID); err != nil {
+		return err
+	}
+	// 停止したユーザーはリフレッシュできないよう全リフレッシュトークンを失効させる（アクセストークンは最長1時間で切れる）
+	return s.refreshTokenRepo.RevokeAllByUser(ctx, userID, time.Now())
 }
 
 func (s *adminService) UnsuspendUser(ctx context.Context, userID uuid.UUID) error {

@@ -35,6 +35,41 @@ func TestConfig_EnvironmentFlags(t *testing.T) {
 	}
 }
 
+func TestConfig_SQLLogAndQueryCountFlags(t *testing.T) {
+	tests := []struct {
+		name             string
+		env              string
+		sqlLog           bool
+		wantLogSQL       bool
+		wantCountQueries bool
+	}{
+		{name: "開発環境は常にSQLログを出す", env: "development", wantLogSQL: true, wantCountQueries: true},
+		{name: "テスト環境はSQL_LOG未指定ならSQLログを出さない", env: "test", wantCountQueries: true},
+		{name: "テスト環境はSQL_LOG=trueでSQLログを出す", env: "test", sqlLog: true, wantLogSQL: true, wantCountQueries: true},
+		{name: "本番環境はSQL_LOG=trueでもSQLログ・クエリ数を出さない", env: "production", sqlLog: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{Env: tt.env, SQLLog: tt.sqlLog}
+
+			assert.Equal(t, tt.wantLogSQL, cfg.ShouldLogSQL())
+			assert.Equal(t, tt.wantCountQueries, cfg.ShouldCountQueries())
+		})
+	}
+}
+
+func TestLoad_ReadsSQLLog(t *testing.T) {
+	t.Setenv("JWT_SECRET", "secret")
+	t.Setenv("JWT_REFRESH_SECRET", "refresh-secret")
+
+	t.Setenv("SQL_LOG", "true")
+	assert.True(t, Load().SQLLog)
+
+	t.Setenv("SQL_LOG", "")
+	assert.False(t, Load().SQLLog)
+}
+
 func TestConfig_AllowedOrigins(t *testing.T) {
 	tests := []struct {
 		name  string

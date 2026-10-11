@@ -35,6 +35,8 @@ type PostService interface {
 	CreateWithRefs(ctx context.Context, userID uuid.UUID, content string, files []*multipart.FileHeader, replyTo, repostOf *uuid.UUID, maxImages int, allowVideo bool) (*dto.PostResponse, error)
 	// ToPostResponse はmodel.Postを集計値付きのdto.PostResponseに変換する
 	ToPostResponse(ctx context.Context, post *model.Post, viewerID *uuid.UUID) (*dto.PostResponse, error)
+	// ToPostResponses は複数の投稿をまとめて変換する。集計値は件数によらず1クエリで取得する（N+1回避）
+	ToPostResponses(ctx context.Context, posts []model.Post, viewerID *uuid.UUID) ([]dto.PostResponse, error)
 }
 
 type postService struct {
@@ -263,13 +265,9 @@ func (s *postService) GetComments(ctx context.Context, postID uuid.UUID, viewerI
 }
 
 func (s *postService) toPostListResponse(ctx context.Context, posts []model.Post, next *time.Time, viewerID *uuid.UUID) (*dto.PostListResponse, error) {
-	data := make([]dto.PostResponse, 0, len(posts))
-	for i := range posts {
-		resp, err := s.ToPostResponse(ctx, &posts[i], viewerID)
-		if err != nil {
-			return nil, err
-		}
-		data = append(data, *resp)
+	data, err := s.ToPostResponses(ctx, posts, viewerID)
+	if err != nil {
+		return nil, err
 	}
 
 	var nextCursor *string
@@ -282,34 +280,36 @@ func (s *postService) toPostListResponse(ctx context.Context, posts []model.Post
 }
 
 func (s *postService) ToPostResponse(ctx context.Context, post *model.Post, viewerID *uuid.UUID) (*dto.PostResponse, error) {
-	likesCount, err := s.likeRepo.CountByPost(ctx, post.ID)
+	resps, err := s.ToPostResponses(ctx, []model.Post{*post}, viewerID)
 	if err != nil {
 		return nil, err
 	}
-	commentsCount, err := s.postRepo.CountComments(ctx, post.ID)
-	if err != nil {
-		return nil, err
+	return &resps[0], nil
+}
+
+func (s *postService) ToPostResponses(ctx context.Context, posts []model.Post, viewerID *uuid.UUID) ([]dto.PostResponse, error) {
+	data := make([]dto.PostResponse, 0, len(posts))
+	if len(posts) == 0 {
+		return data, nil
 	}
-	repostsCount, err := s.postRepo.CountReposts(ctx, post.ID)
+
+	ids := make([]uuid.UUID, len(posts))
+	for i := range posts {
+		ids[i] = posts[i].ID
+	}
+	stats, err := s.postRepo.FindStatsByIDs(ctx, ids, viewerID)
 	if err != nil {
 		return nil, err
 	}
 
-	var isLiked, isBookmarked, isReposted bool
-	if viewerID != nil {
-		if isLiked, err = s.likeRepo.IsLiked(ctx, *viewerID, post.ID); err != nil {
-			return nil, err
-		}
-		if isBookmarked, err = s.bookmarkRepo.IsBookmarked(ctx, *viewerID, post.ID); err != nil {
-			return nil, err
-		}
-		if _, err := s.postRepo.FindActiveRepost(ctx, *viewerID, post.ID); err == nil {
-			isReposted = true
-		} else if !errors.Is(err, repository.ErrNotFound) {
-			return nil, err
-		}
+	for i := range posts {
+		data = append(data, buildPostResponse(&posts[i], stats[posts[i].ID]))
 	}
+	return data, nil
+}
 
+// buildPostResponse は投稿と集計値からレスポンスを組み立てる（DBアクセスなし）
+func buildPostResponse(post *model.Post, stats repository.PostStats) dto.PostResponse {
 	var replyTo *string
 	var replyToUser *dto.UserInPost
 	if post.ReplyTo != nil {
@@ -326,24 +326,24 @@ func (s *postService) ToPostResponse(ctx context.Context, post *model.Post, view
 		repostOf = toPostSummary(post.RepostOfPost)
 	}
 
-	return &dto.PostResponse{
+	return dto.PostResponse{
 		ID:            post.ID.String(),
 		User:          toUserInPost(post.User),
 		Content:       post.Content,
 		Media:         toMediaResponses(post.Media),
-		LikesCount:    likesCount,
-		CommentsCount: commentsCount,
-		RepostsCount:  repostsCount,
-		IsLiked:       isLiked,
-		IsBookmarked:  isBookmarked,
-		IsReposted:    isReposted,
+		LikesCount:    stats.LikesCount,
+		CommentsCount: stats.CommentsCount,
+		RepostsCount:  stats.RepostsCount,
+		IsLiked:       stats.IsLiked,
+		IsBookmarked:  stats.IsBookmarked,
+		IsReposted:    stats.IsReposted,
 		IsEdited:      post.IsEdited,
 		RepostOf:      repostOf,
 		ReplyTo:       replyTo,
 		ReplyToUser:   replyToUser,
 		CreatedAt:     post.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:     post.UpdatedAt.Format(time.RFC3339),
-	}, nil
+	}
 }
 
 func toUserInPost(u model.User) dto.UserInPost {

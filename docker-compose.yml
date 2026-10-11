@@ -76,6 +76,9 @@ services:
       dockerfile: Dockerfile.dev
     env_file:
       - ./backend/.env.test
+    environment:
+      # 性能計測時（make perf-timeline）に SQL_LOG=true を渡すと全SQLをログ出力する
+      SQL_LOG: ${SQL_LOG:-false}
     volumes:
       - ./backend:/app
       - go-mod-cache:/go/pkg/mod

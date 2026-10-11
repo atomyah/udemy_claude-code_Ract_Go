@@ -47,29 +47,9 @@ func (s *searchService) SearchUsers(ctx context.Context, query string, viewerID 
 		return nil, err
 	}
 
-	data := make([]dto.UserResponse, len(users))
-	for i, u := range users {
-		resp := ToUserResponse(&u)
-
-		followersCount, err := s.followRepo.CountFollowers(ctx, u.ID)
-		if err != nil {
-			return nil, err
-		}
-		followingCount, err := s.followRepo.CountFollowing(ctx, u.ID)
-		if err != nil {
-			return nil, err
-		}
-		resp.FollowersCount = followersCount
-		resp.FollowingCount = followingCount
-
-		if viewerID != nil {
-			isFollowing, err := s.followRepo.Exists(ctx, *viewerID, u.ID)
-			if err != nil {
-				return nil, err
-			}
-			resp.IsFollowing = isFollowing
-		}
-		data[i] = resp
+	data, err := toUserResponsesWithStats(ctx, s.followRepo, users, viewerID)
+	if err != nil {
+		return nil, err
 	}
 
 	var nextCursor *string
@@ -132,13 +112,9 @@ func (s *searchService) GetPostsByHashtag(ctx context.Context, tag string, viewe
 }
 
 func (s *searchService) toPostListResponse(ctx context.Context, posts []model.Post, next *time.Time, viewerID *uuid.UUID) (*dto.PostListResponse, error) {
-	data := make([]dto.PostResponse, 0, len(posts))
-	for i := range posts {
-		resp, err := s.postSvc.ToPostResponse(ctx, &posts[i], viewerID)
-		if err != nil {
-			return nil, err
-		}
-		data = append(data, *resp)
+	data, err := s.postSvc.ToPostResponses(ctx, posts, viewerID)
+	if err != nil {
+		return nil, err
 	}
 
 	var nextCursor *string

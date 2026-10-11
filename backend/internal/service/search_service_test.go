@@ -33,9 +33,10 @@ func TestSearchService_SearchUsers_IncludesFollowState(t *testing.T) {
 	searchRepo := new(mockSearchRepo)
 	followRepo := new(mockFollowRepo)
 	searchRepo.On("SearchUsers", mock.Anything, "taro", (*time.Time)(nil), 20).Return([]model.User{target}, nil, nil)
-	followRepo.On("CountFollowers", mock.Anything, target.ID).Return(2, nil)
-	followRepo.On("CountFollowing", mock.Anything, target.ID).Return(1, nil)
-	followRepo.On("Exists", mock.Anything, viewerID, target.ID).Return(true, nil)
+	followRepo.On("FindStatsByUserIDs", mock.Anything, []uuid.UUID{target.ID}, &viewerID).
+		Return(map[uuid.UUID]repository.UserStats{
+			target.ID: {UserID: target.ID, FollowersCount: 2, FollowingCount: 1, IsFollowing: true},
+		}, nil).Once()
 
 	svc := NewSearchService(searchRepo, new(mockHashtagRepo), new(mockPostRepo), followRepo, new(mockPostSvc))
 	resp, err := svc.SearchUsers(context.Background(), "taro", &viewerID, "", 20)
@@ -57,7 +58,7 @@ func TestSearchService_SearchPosts_Success(t *testing.T) {
 	likeRepo := new(mockLikeRepo)
 	bookmarkRepo := new(mockBookmarkRepo)
 	searchRepo.On("SearchPosts", mock.Anything, "テスト", (*time.Time)(nil), 20).Return([]model.Post{post}, nil, nil)
-	expectCounts(postRepo, likeRepo, bookmarkRepo, postID)
+	expectStats(postRepo)
 
 	postSvc := newPostService(postRepo, likeRepo, bookmarkRepo)
 	svc := NewSearchService(searchRepo, new(mockHashtagRepo), postRepo, new(mockFollowRepo), postSvc)
@@ -90,7 +91,7 @@ func TestSearchService_GetPostsByHashtag_Success(t *testing.T) {
 	hashtagRepo.On("FindByName", mock.Anything, "golang").Return(hashtag, nil)
 	hashtagRepo.On("GetPostIDsByHashtag", mock.Anything, hashtag.ID, (*time.Time)(nil), 21).Return([]uuid.UUID{postID}, nil)
 	postRepo.On("FindByIDs", mock.Anything, []uuid.UUID{postID}).Return([]model.Post{post}, nil)
-	expectCounts(postRepo, likeRepo, bookmarkRepo, postID)
+	expectStats(postRepo)
 
 	postSvc := newPostService(postRepo, likeRepo, bookmarkRepo)
 	svc := NewSearchService(new(mockSearchRepo), hashtagRepo, postRepo, new(mockFollowRepo), postSvc)
@@ -136,8 +137,8 @@ func TestBookmarkService_GetBookmarks_Success(t *testing.T) {
 	bookmarkRepo := new(mockBookmarkRepo)
 	postSvc := new(mockPostSvc)
 	bookmarkRepo.On("GetByUser", mock.Anything, userID, (*time.Time)(nil), 20).Return([]model.Post{post}, nil, nil)
-	postSvc.On("ToPostResponse", mock.Anything, mock.AnythingOfType("*model.Post"), &userID).
-		Return(&dto.PostResponse{ID: postID.String(), Content: "ブックマーク済み"}, nil)
+	postSvc.On("ToPostResponses", mock.Anything, []model.Post{post}, &userID).
+		Return([]dto.PostResponse{{ID: postID.String(), Content: "ブックマーク済み"}}, nil).Once()
 
 	svc := NewBookmarkService(new(mockPostRepo), bookmarkRepo, postSvc)
 	resp, err := svc.GetBookmarks(context.Background(), userID, "", 20)
@@ -170,8 +171,8 @@ func TestUserService_GetFollowersAndFollowing(t *testing.T) {
 	userRepo.On("FindByHandle", mock.Anything, "taro").Return(target, nil)
 	followRepo.On("GetFollowers", mock.Anything, target.ID, (*time.Time)(nil), 20).Return([]model.User{follower}, nil, nil)
 	followRepo.On("GetFollowing", mock.Anything, target.ID, (*time.Time)(nil), 20).Return([]model.User{}, nil, nil)
-	followRepo.On("CountFollowers", mock.Anything, follower.ID).Return(0, nil)
-	followRepo.On("CountFollowing", mock.Anything, follower.ID).Return(0, nil)
+	followRepo.On("FindStatsByUserIDs", mock.Anything, []uuid.UUID{follower.ID}, (*uuid.UUID)(nil)).
+		Return(map[uuid.UUID]repository.UserStats{}, nil)
 
 	svc := NewUserService(userRepo, followRepo, new(mockNotificationSvc))
 
@@ -199,7 +200,7 @@ func TestPostService_GetUserPostsAndComments(t *testing.T) {
 	postRepo.On("GetByUser", mock.Anything, user.ID, (*time.Time)(nil), 20).Return([]model.Post{post}, nil, nil)
 	postRepo.On("GetRepliesByUser", mock.Anything, user.ID, (*time.Time)(nil), 20).Return([]model.Post{}, nil, nil)
 	postRepo.On("GetComments", mock.Anything, postID, (*time.Time)(nil), 20).Return([]model.Post{}, nil, nil)
-	expectCounts(postRepo, likeRepo, bookmarkRepo, postID)
+	expectStats(postRepo)
 
 	svc := NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), userRepo, likeRepo, bookmarkRepo, new(mockStorageSvc), new(mockNotificationSvc))
 
@@ -225,7 +226,7 @@ func TestPostService_GetHomeTimeline_Success(t *testing.T) {
 	likeRepo := new(mockLikeRepo)
 	bookmarkRepo := new(mockBookmarkRepo)
 	postRepo.On("GetExplore", mock.Anything, (*time.Time)(nil), 20).Return([]model.Post{post}, nil, nil)
-	expectCounts(postRepo, likeRepo, bookmarkRepo, postID)
+	expectStats(postRepo)
 
 	svc := newPostService(postRepo, likeRepo, bookmarkRepo)
 	resp, err := svc.GetHomeTimeline(context.Background(), userID, "", 20)

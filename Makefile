@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev-up dev-down dev-logs test-setup test-teardown test-backend test-frontend test-e2e test
+.PHONY: help dev-up dev-down dev-logs test-setup test-teardown test-backend test-frontend test-e2e test perf-timeline
 
 COMPOSE      := docker compose
 TEST_COMPOSE := docker compose --profile test
@@ -58,6 +58,17 @@ test-e2e: test-setup
 ## test-frontend: フロントエンドの単体テスト（Vitest）を実行する（テスト環境は不要）
 test-frontend:
 	cd frontend && npm run test
+
+## perf-timeline: テスト環境でタイムラインAPIの応答時間とSQL本数を計測する（LABEL=before などで結果ファイル名を指定）
+## SQL_LOG=true でテスト用APIを起動し、1リクエスト分のSQLログも .perf-results/ に保存する
+LABEL ?= measure
+perf-timeline:
+	@set +e; \
+	SQL_LOG=true "$(MAKE)" test-setup || { "$(MAKE)" test-teardown; exit 1; }; \
+	bash scripts/perf/measure-timeline.sh $(LABEL); \
+	status=$$?; \
+	"$(MAKE)" test-teardown; \
+	exit $$status
 
 ## test: バックエンド単体テスト・フロントエンド単体テスト・E2Eテストをすべて実行する
 test:

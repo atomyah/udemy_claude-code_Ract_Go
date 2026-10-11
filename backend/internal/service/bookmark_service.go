@@ -63,13 +63,9 @@ func (s *bookmarkService) GetBookmarks(ctx context.Context, userID uuid.UUID, cu
 		return nil, err
 	}
 
-	data := make([]dto.PostResponse, 0, len(posts))
-	for i := range posts {
-		resp, err := s.postSvc.ToPostResponse(ctx, &posts[i], &userID)
-		if err != nil {
-			return nil, err
-		}
-		data = append(data, *resp)
+	data, err := s.postSvc.ToPostResponses(ctx, posts, &userID)
+	if err != nil {
+		return nil, err
 	}
 
 	var nextCursor *string

@@ -47,14 +47,71 @@ func newPostService(postRepo *mockPostRepo, likeRepo *mockLikeRepo, bookmarkRepo
 	return NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), new(mockUserRepo), likeRepo, bookmarkRepo, new(mockStorageSvc), new(mockNotificationSvc))
 }
 
-// expectCounts はToPostResponseが呼ぶ集計系のモックを設定する
-func expectCounts(postRepo *mockPostRepo, likeRepo *mockLikeRepo, bookmarkRepo *mockBookmarkRepo, postID uuid.UUID) {
-	likeRepo.On("CountByPost", mock.Anything, postID).Return(0, nil)
-	postRepo.On("CountComments", mock.Anything, postID).Return(0, nil)
-	postRepo.On("CountReposts", mock.Anything, postID).Return(0, nil)
-	likeRepo.On("IsLiked", mock.Anything, mock.Anything, postID).Return(false, nil)
-	bookmarkRepo.On("IsBookmarked", mock.Anything, mock.Anything, postID).Return(false, nil)
-	postRepo.On("FindActiveRepost", mock.Anything, mock.Anything, postID).Return(nil, repository.ErrNotFound)
+// expectStats はToPostResponse(s)が呼ぶ集計値の一括取得モックを設定する（集計値はすべて0）
+func expectStats(postRepo *mockPostRepo) {
+	postRepo.On("FindStatsByIDs", mock.Anything, mock.Anything, mock.Anything).
+		Return(map[uuid.UUID]repository.PostStats{}, nil)
+}
+
+func TestPostService_ToPostResponses_FetchesStatsOnceForAllPosts(t *testing.T) {
+	viewerID := uuid.New()
+	author := model.User{ID: uuid.New(), Handle: "taro"}
+	p1 := model.Post{ID: uuid.New(), UserID: author.ID, User: author, Content: "1件目"}
+	p2 := model.Post{ID: uuid.New(), UserID: author.ID, User: author, Content: "2件目"}
+
+	postRepo := new(mockPostRepo)
+	likeRepo := new(mockLikeRepo)
+	bookmarkRepo := new(mockBookmarkRepo)
+	postRepo.On("FindStatsByIDs", mock.Anything, []uuid.UUID{p1.ID, p2.ID}, &viewerID).
+		Return(map[uuid.UUID]repository.PostStats{
+			p1.ID: {PostID: p1.ID, LikesCount: 3, CommentsCount: 2, RepostsCount: 1, IsLiked: true, IsBookmarked: true, IsReposted: true},
+			// p2 は集計行が無い（いいね等が0件）ケース。ゼロ値で埋まること
+		}, nil).Once()
+
+	svc := newPostService(postRepo, likeRepo, bookmarkRepo)
+	resps, err := svc.ToPostResponses(context.Background(), []model.Post{p1, p2}, &viewerID)
+
+	require.NoError(t, err)
+	require.Len(t, resps, 2)
+	assert.Equal(t, "1件目", resps[0].Content)
+	assert.Equal(t, int64(3), resps[0].LikesCount)
+	assert.Equal(t, int64(2), resps[0].CommentsCount)
+	assert.Equal(t, int64(1), resps[0].RepostsCount)
+	assert.True(t, resps[0].IsLiked)
+	assert.True(t, resps[0].IsBookmarked)
+	assert.True(t, resps[0].IsReposted)
+	assert.Equal(t, "2件目", resps[1].Content)
+	assert.Equal(t, int64(0), resps[1].LikesCount)
+	assert.False(t, resps[1].IsLiked)
+	postRepo.AssertExpectations(t)
+	// 投稿ごとの個別集計クエリ（N+1の原因）は呼ばれない
+	likeRepo.AssertNotCalled(t, "CountByPost", mock.Anything, mock.Anything)
+	likeRepo.AssertNotCalled(t, "IsLiked", mock.Anything, mock.Anything, mock.Anything)
+	bookmarkRepo.AssertNotCalled(t, "IsBookmarked", mock.Anything, mock.Anything, mock.Anything)
+	postRepo.AssertNotCalled(t, "CountComments", mock.Anything, mock.Anything)
+	postRepo.AssertNotCalled(t, "CountReposts", mock.Anything, mock.Anything)
+	postRepo.AssertNotCalled(t, "FindActiveRepost", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestPostService_ToPostResponses_EmptyDoesNotQuery(t *testing.T) {
+	postRepo := new(mockPostRepo)
+	svc := newPostService(postRepo, new(mockLikeRepo), new(mockBookmarkRepo))
+
+	resps, err := svc.ToPostResponses(context.Background(), nil, nil)
+
+	require.NoError(t, err)
+	assert.Empty(t, resps)
+	postRepo.AssertNotCalled(t, "FindStatsByIDs", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestPostService_ToPostResponses_StatsError(t *testing.T) {
+	postRepo := new(mockPostRepo)
+	postRepo.On("FindStatsByIDs", mock.Anything, mock.Anything, mock.Anything).Return(nil, assert.AnError)
+	svc := newPostService(postRepo, new(mockLikeRepo), new(mockBookmarkRepo))
+
+	_, err := svc.ToPostResponses(context.Background(), []model.Post{{ID: uuid.New()}}, nil)
+
+	assert.ErrorIs(t, err, assert.AnError)
 }
 
 func TestPostService_CreatePost_Success(t *testing.T) {
@@ -68,7 +125,7 @@ func TestPostService_CreatePost_Success(t *testing.T) {
 	postRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Post")).
 		Run(func(args mock.Arguments) { args.Get(1).(*model.Post).ID = postID }).Return(nil)
 	postRepo.On("FindByID", mock.Anything, postID).Return(stored, nil)
-	expectCounts(postRepo, likeRepo, bookmarkRepo, postID)
+	expectStats(postRepo)
 
 	svc := newPostService(postRepo, likeRepo, bookmarkRepo)
 	resp, err := svc.CreatePost(context.Background(), userID, "こんにちは", nil)
@@ -128,7 +185,7 @@ func TestPostService_UpdatePost_Success(t *testing.T) {
 	bookmarkRepo := new(mockBookmarkRepo)
 	postRepo.On("FindByID", mock.Anything, postID).Return(stored, nil)
 	postRepo.On("Update", mock.Anything, stored).Return(nil)
-	expectCounts(postRepo, likeRepo, bookmarkRepo, postID)
+	expectStats(postRepo)
 
 	svc := newPostService(postRepo, likeRepo, bookmarkRepo)
 	resp, err := svc.UpdatePost(context.Background(), postID, userID, "編集後")
@@ -212,7 +269,7 @@ func TestPostService_GetExploreTimeline_ReturnsCursor(t *testing.T) {
 	bookmarkRepo := new(mockBookmarkRepo)
 	next := post.CreatedAt
 	postRepo.On("GetExplore", mock.Anything, (*time.Time)(nil), 20).Return([]model.Post{post}, &next, nil)
-	expectCounts(postRepo, likeRepo, bookmarkRepo, postID)
+	expectStats(postRepo)
 
 	svc := newPostService(postRepo, likeRepo, bookmarkRepo)
 	resp, err := svc.GetExploreTimeline(context.Background(), nil, "", 20)
@@ -249,7 +306,7 @@ func TestPostService_CreatePost_NotifiesMentionedUsers(t *testing.T) {
 	postRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Post")).
 		Run(func(args mock.Arguments) { args.Get(1).(*model.Post).ID = postID }).Return(nil)
 	postRepo.On("FindByID", mock.Anything, postID).Return(stored, nil)
-	expectCounts(postRepo, likeRepo, bookmarkRepo, postID)
+	expectStats(postRepo)
 	userRepo.On("FindByHandle", mock.Anything, "hanako").Return(mentioned, nil)
 	// 存在しないハンドルは無視する
 	userRepo.On("FindByHandle", mock.Anything, "unknown_user").Return(nil, repository.ErrNotFound)
@@ -279,7 +336,7 @@ func TestPostService_CreatePost_WithoutMention_DoesNotNotify(t *testing.T) {
 	postRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Post")).
 		Run(func(args mock.Arguments) { args.Get(1).(*model.Post).ID = postID }).Return(nil)
 	postRepo.On("FindByID", mock.Anything, postID).Return(stored, nil)
-	expectCounts(postRepo, likeRepo, bookmarkRepo, postID)
+	expectStats(postRepo)
 
 	svc := NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), new(mockUserRepo), likeRepo,
 		bookmarkRepo, new(mockStorageSvc), notifySvc)

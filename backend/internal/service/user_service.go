@@ -232,13 +232,9 @@ func (s *userService) ChangePassword(ctx context.Context, userID uuid.UUID, req 
 // └──────────────────────────────┴─────────────────────┘
 
 func (s *userService) toUserListResponse(ctx context.Context, users []model.User, next *time.Time, viewerID *uuid.UUID) (*dto.UserListResponse, error) {
-	data := make([]dto.UserResponse, 0, len(users))
-	for i := range users {
-		resp, err := s.toUserResponseWithCounts(ctx, &users[i], viewerID)
-		if err != nil {
-			return nil, err
-		}
-		data = append(data, *resp)
+	data, err := toUserResponsesWithStats(ctx, s.followRepo, users, viewerID)
+	if err != nil {
+		return nil, err
 	}
 
 	var nextCursor *string
@@ -248,6 +244,34 @@ func (s *userService) toUserListResponse(ctx context.Context, users []model.User
 	}
 
 	return &dto.UserListResponse{Data: data, NextCursor: nextCursor, HasMore: next != nil}, nil
+}
+
+// toUserResponsesWithStats はユーザー一覧をフォロー集計付きのレスポンスに変換する。
+// 集計値は件数によらず1クエリでまとめて取得する（N+1回避）
+func toUserResponsesWithStats(ctx context.Context, followRepo repository.FollowRepository, users []model.User, viewerID *uuid.UUID) ([]dto.UserResponse, error) {
+	data := make([]dto.UserResponse, 0, len(users))
+	if len(users) == 0 {
+		return data, nil
+	}
+
+	ids := make([]uuid.UUID, len(users))
+	for i := range users {
+		ids[i] = users[i].ID
+	}
+	stats, err := followRepo.FindStatsByUserIDs(ctx, ids, viewerID)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range users {
+		resp := ToUserResponse(&users[i])
+		st := stats[users[i].ID]
+		resp.FollowersCount = st.FollowersCount
+		resp.FollowingCount = st.FollowingCount
+		resp.IsFollowing = st.IsFollowing
+		data = append(data, resp)
+	}
+	return data, nil
 }
 
 func (s *userService) toUserResponseWithCounts(ctx context.Context, user *model.User, viewerID *uuid.UUID) (*dto.UserResponse, error) {

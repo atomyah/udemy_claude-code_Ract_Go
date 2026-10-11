@@ -97,6 +97,12 @@ func (m *mockPostSvc) ToPostResponse(ctx context.Context, post *model.Post, view
 	return postResponseOrNil(args.Get(0)), args.Error(1)
 }
 
+func (m *mockPostSvc) ToPostResponses(ctx context.Context, posts []model.Post, viewerID *uuid.UUID) ([]dto.PostResponse, error) {
+	args := m.Called(ctx, posts, viewerID)
+	resps, _ := args.Get(0).([]dto.PostResponse)
+	return resps, args.Error(1)
+}
+
 type mockCommentSvc struct{ mock.Mock }
 
 func (m *mockCommentSvc) CreateComment(ctx context.Context, userID, postID uuid.UUID, content string, files []*multipart.FileHeader) (*dto.PostResponse, error) {

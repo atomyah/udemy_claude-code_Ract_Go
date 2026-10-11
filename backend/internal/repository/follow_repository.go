@@ -17,6 +17,50 @@ type FollowRepository interface {
 	CountFollowing(ctx context.Context, userID uuid.UUID) (int64, error)
 	GetFollowers(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]model.User, *time.Time, error)
 	GetFollowing(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]model.User, *time.Time, error)
+	// FindStatsByUserIDs は複数ユーザーのフォロー数・フォロワー数と閲覧者のフォロー状態を1クエリでまとめて取得する（一覧表示のN+1回避用）
+	FindStatsByUserIDs(ctx context.Context, userIDs []uuid.UUID, viewerID *uuid.UUID) (map[uuid.UUID]UserStats, error)
+}
+
+// UserStats はユーザー1人分のフォロー集計値と閲覧者のフォロー状態
+type UserStats struct {
+	UserID         uuid.UUID
+	FollowersCount int64
+	FollowingCount int64
+	IsFollowing    bool
+}
+
+// userStatsQuery はユーザーごとのフォロー集計を相関サブクエリで1行にまとめる。
+// 閲覧者がいない場合は @viewer に uuid.Nil を渡し、is_following は false になる。
+const userStatsQuery = `
+SELECT u.id AS user_id,
+  (SELECT COUNT(*) FROM follows f WHERE f.following_id = u.id) AS followers_count,
+  (SELECT COUNT(*) FROM follows f WHERE f.follower_id = u.id) AS following_count,
+  EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = @viewer AND f.following_id = u.id) AS is_following
+FROM users u
+WHERE u.id IN @ids`
+
+func (r *followRepository) FindStatsByUserIDs(ctx context.Context, userIDs []uuid.UUID, viewerID *uuid.UUID) (map[uuid.UUID]UserStats, error) {
+	result := make(map[uuid.UUID]UserStats, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+
+	viewer := uuid.Nil
+	if viewerID != nil {
+		viewer = *viewerID
+	}
+
+	var rows []UserStats
+	err := r.db.WithContext(ctx).
+		Raw(userStatsQuery, map[string]interface{}{"ids": userIDs, "viewer": viewer}).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		result[row.UserID] = row
+	}
+	return result, nil
 }
 
 type followRepository struct {

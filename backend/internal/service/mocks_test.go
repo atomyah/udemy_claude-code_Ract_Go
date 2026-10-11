@@ -7,6 +7,7 @@ import (
 
 	"github.com/atyahara/sns-backend/internal/dto"
 	"github.com/atyahara/sns-backend/internal/model"
+	"github.com/atyahara/sns-backend/internal/repository"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 )
@@ -123,6 +124,12 @@ func (m *mockPostRepo) FindActiveRepost(ctx context.Context, userID, postID uuid
 	return postOrNil(args.Get(0)), args.Error(1)
 }
 
+func (m *mockPostRepo) FindStatsByIDs(ctx context.Context, postIDs []uuid.UUID, viewerID *uuid.UUID) (map[uuid.UUID]repository.PostStats, error) {
+	args := m.Called(ctx, postIDs, viewerID)
+	stats, _ := args.Get(0).(map[uuid.UUID]repository.PostStats)
+	return stats, args.Error(1)
+}
+
 type mockLikeRepo struct{ mock.Mock }
 
 func (m *mockLikeRepo) Create(ctx context.Context, userID, postID uuid.UUID) error {
@@ -196,6 +203,12 @@ func (m *mockFollowRepo) GetFollowers(ctx context.Context, userID uuid.UUID, cur
 func (m *mockFollowRepo) GetFollowing(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]model.User, *time.Time, error) {
 	args := m.Called(ctx, userID, cursor, limit)
 	return args.Get(0).([]model.User), timeOrNil(args.Get(1)), args.Error(2)
+}
+
+func (m *mockFollowRepo) FindStatsByUserIDs(ctx context.Context, userIDs []uuid.UUID, viewerID *uuid.UUID) (map[uuid.UUID]repository.UserStats, error) {
+	args := m.Called(ctx, userIDs, viewerID)
+	stats, _ := args.Get(0).(map[uuid.UUID]repository.UserStats)
+	return stats, args.Error(1)
 }
 
 type mockNotificationRepo struct{ mock.Mock }
@@ -338,6 +351,12 @@ func (m *mockPostSvc) CreateWithRefs(ctx context.Context, userID uuid.UUID, cont
 func (m *mockPostSvc) ToPostResponse(ctx context.Context, post *model.Post, viewerID *uuid.UUID) (*dto.PostResponse, error) {
 	args := m.Called(ctx, post, viewerID)
 	return postResponseOrNil(args.Get(0)), args.Error(1)
+}
+
+func (m *mockPostSvc) ToPostResponses(ctx context.Context, posts []model.Post, viewerID *uuid.UUID) ([]dto.PostResponse, error) {
+	args := m.Called(ctx, posts, viewerID)
+	resps, _ := args.Get(0).([]dto.PostResponse)
+	return resps, args.Error(1)
 }
 
 type mockStorageSvc struct{ mock.Mock }

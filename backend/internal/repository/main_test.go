@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/atyahara/sns-backend/internal/model"
+	"github.com/atyahara/sns-backend/internal/querycount"
 	"github.com/google/uuid"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -36,6 +37,10 @@ func TestMain(m *testing.M) {
 		&model.Bookmark{}, &model.Follow{}, &model.Hashtag{}, &model.PostHashtag{}, &model.Notification{},
 	); err != nil {
 		log.Fatalf("テストDBマイグレーション失敗: %v", err)
+	}
+	// N+1検出テストでクエリ本数を数えられるようにする（カウンター付きコンテキストのクエリのみ数える）
+	if err := querycount.Register(db); err != nil {
+		log.Fatalf("クエリ数カウンターの登録失敗: %v", err)
 	}
 	testDB = db
 

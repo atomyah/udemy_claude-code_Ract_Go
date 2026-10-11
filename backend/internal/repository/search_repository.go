@@ -58,11 +58,11 @@ func (r *searchRepository) SearchUsers(ctx context.Context, query string, cursor
 // SearchPosts は投稿本文の部分一致で検索する（削除済み・停止ユーザーの投稿は除外）
 func (r *searchRepository) SearchPosts(ctx context.Context, query string, cursor *time.Time, limit int) ([]model.Post, *time.Time, error) {
 	like := likePattern(query)
+	// 投稿者は停止ユーザー除外のJOIN（InnerJoins）で同時に読み込む（Preload("User")の追加クエリを省く）
 	q := r.db.WithContext(ctx).
 		Model(&model.Post{}).
-		Joins("JOIN users ON users.id = posts.user_id").
-		Where("posts.is_deleted = false AND users.is_suspended = false AND posts.content ILIKE ?", like).
-		Preload("User").
+		InnerJoins("User").
+		Where(`posts.is_deleted = false AND "User".is_suspended = false AND posts.content ILIKE ?`, like).
 		Preload("Media").
 		Preload("RepostOfPost").
 		Preload("RepostOfPost.User").

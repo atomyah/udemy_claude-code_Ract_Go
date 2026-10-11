@@ -51,3 +51,6 @@ backend/tmp_test/
 
 # セッションのサマリーメモ（APIキーの貼り付けを含むためコミットしない）
 /サマリー*.txt
+
+# 性能計測結果（make perf-timeline）
+.perf-results/

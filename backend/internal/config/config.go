@@ -16,6 +16,8 @@ type Config struct {
 	CORSOrigins           string
 	Port                  string
 	Env                   string
+	// SQLLog はテスト環境でもSQLログ（全クエリ）を出力するかどうか（環境変数 SQL_LOG=true）
+	SQLLog bool
 }
 
 // Load は環境変数から設定を読み込む
@@ -29,6 +31,7 @@ func Load() *Config {
 		CORSOrigins:           getEnv("CORS_ORIGINS", "http://localhost:5173"),
 		Port:                  getEnv("PORT", "8080"),
 		Env:                   getEnv("ENV", "development"),
+		SQLLog:                getEnv("SQL_LOG", "false") == "true",
 	}
 
 	if cfg.JWTSecret == "" {
@@ -59,6 +62,19 @@ func (c *Config) IsProduction() bool {
 // ShouldAutoMigrate はGORMのAutoMigrateを実行してよい環境かどうかを返す。
 // 本番環境ではマイグレーションファイル（golang-migrate）を使うため常にfalseになる。
 func (c *Config) ShouldAutoMigrate() bool {
+	return c.IsDevelopment() || c.IsTest()
+}
+
+// ShouldLogSQL はGORMのSQLログ（全クエリ）を出力するかどうかを返す。
+// 開発環境では常に出力し、テスト環境では SQL_LOG=true のときだけ出力する（性能計測用）。
+// 本番環境ではクエリ内容にユーザーデータが含まれるため常に出力しない。
+func (c *Config) ShouldLogSQL() bool {
+	return c.IsDevelopment() || (c.IsTest() && c.SQLLog)
+}
+
+// ShouldCountQueries はリクエストごとのSQLクエリ数を数えて X-DB-Query-Count ヘッダーで返すかどうかを返す。
+// N+1検出・性能計測用のため開発・テスト環境のみ有効にする。
+func (c *Config) ShouldCountQueries() bool {
 	return c.IsDevelopment() || c.IsTest()
 }
 

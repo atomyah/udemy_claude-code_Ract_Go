@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/atyahara/sns-backend/internal/authtoken"
+	"github.com/atyahara/sns-backend/internal/model"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -61,7 +63,7 @@ func TestJWTAuth_ValidToken_SetsUserID(t *testing.T) {
 	c, rec := newContext("Bearer " + token)
 
 	var capturedID uuid.UUID
-	handler := JWTAuth(testSecret)(func(c echo.Context) error {
+	handler := JWTAuth(testSecret, activeUserFinder{})(func(c echo.Context) error {
 		capturedID = c.Get("userID").(uuid.UUID)
 		return okHandler(c)
 	})
@@ -74,7 +76,7 @@ func TestJWTAuth_ValidToken_SetsUserID(t *testing.T) {
 func TestJWTAuth_MissingToken_Returns401(t *testing.T) {
 	c, rec := newContext("")
 
-	require.NoError(t, JWTAuth(testSecret)(okHandler)(c))
+	require.NoError(t, JWTAuth(testSecret, activeUserFinder{})(okHandler)(c))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	body := decodeError(t, rec)
@@ -85,7 +87,7 @@ func TestJWTAuth_MissingToken_Returns401(t *testing.T) {
 func TestJWTAuth_MalformedAuthorizationHeader_Returns401(t *testing.T) {
 	c, rec := newContext("Token abcdef")
 
-	require.NoError(t, JWTAuth(testSecret)(okHandler)(c))
+	require.NoError(t, JWTAuth(testSecret, activeUserFinder{})(okHandler)(c))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Equal(t, "MISSING_TOKEN", decodeError(t, rec)["code"])
@@ -95,7 +97,7 @@ func TestJWTAuth_InvalidSignature_Returns401(t *testing.T) {
 	token := makeToken(t, "another-secret", uuid.NewString(), time.Now().Add(15*time.Minute))
 	c, rec := newContext("Bearer " + token)
 
-	require.NoError(t, JWTAuth(testSecret)(okHandler)(c))
+	require.NoError(t, JWTAuth(testSecret, activeUserFinder{})(okHandler)(c))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	body := decodeError(t, rec)
@@ -107,7 +109,7 @@ func TestJWTAuth_ExpiredToken_Returns401(t *testing.T) {
 	token := makeToken(t, testSecret, uuid.NewString(), time.Now().Add(-1*time.Minute))
 	c, rec := newContext("Bearer " + token)
 
-	require.NoError(t, JWTAuth(testSecret)(okHandler)(c))
+	require.NoError(t, JWTAuth(testSecret, activeUserFinder{})(okHandler)(c))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	body := decodeError(t, rec)
@@ -119,7 +121,7 @@ func TestJWTAuth_SubjectIsNotUUID_Returns401(t *testing.T) {
 	token := makeToken(t, testSecret, "not-a-uuid", time.Now().Add(15*time.Minute))
 	c, rec := newContext("Bearer " + token)
 
-	require.NoError(t, JWTAuth(testSecret)(okHandler)(c))
+	require.NoError(t, JWTAuth(testSecret, activeUserFinder{})(okHandler)(c))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Equal(t, "INVALID_TOKEN", decodeError(t, rec)["code"])
@@ -129,7 +131,7 @@ func TestOptionalJWTAuth_NoToken_PassesThroughWithoutUserID(t *testing.T) {
 	c, rec := newContext("")
 
 	var hasUserID bool
-	handler := OptionalJWTAuth(testSecret)(func(c echo.Context) error {
+	handler := OptionalJWTAuth(testSecret, activeUserFinder{})(func(c echo.Context) error {
 		_, hasUserID = c.Get("userID").(uuid.UUID)
 		return okHandler(c)
 	})
@@ -143,7 +145,7 @@ func TestOptionalJWTAuth_InvalidToken_PassesThroughWithoutUserID(t *testing.T) {
 	c, rec := newContext("Bearer invalid.token.value")
 
 	var hasUserID bool
-	handler := OptionalJWTAuth(testSecret)(func(c echo.Context) error {
+	handler := OptionalJWTAuth(testSecret, activeUserFinder{})(func(c echo.Context) error {
 		_, hasUserID = c.Get("userID").(uuid.UUID)
 		return okHandler(c)
 	})
@@ -159,7 +161,7 @@ func TestOptionalJWTAuth_ValidToken_SetsUserID(t *testing.T) {
 	c, rec := newContext("Bearer " + token)
 
 	var capturedID uuid.UUID
-	handler := OptionalJWTAuth(testSecret)(func(c echo.Context) error {
+	handler := OptionalJWTAuth(testSecret, activeUserFinder{})(func(c echo.Context) error {
 		capturedID = c.Get("userID").(uuid.UUID)
 		return okHandler(c)
 	})
@@ -174,7 +176,7 @@ func TestOptionalJWTAuth_SubjectIsNotUUID_PassesThroughWithoutUserID(t *testing.
 	c, rec := newContext("Bearer " + token)
 
 	var hasUserID bool
-	handler := OptionalJWTAuth(testSecret)(func(c echo.Context) error {
+	handler := OptionalJWTAuth(testSecret, activeUserFinder{})(func(c echo.Context) error {
 		_, hasUserID = c.Get("userID").(uuid.UUID)
 		return okHandler(c)
 	})
@@ -198,7 +200,7 @@ func TestJWTAuth_TokenInCookie_SetsUserID(t *testing.T) {
 	c, rec := newCookieContext(makeToken(t, testSecret, userID.String(), time.Now().Add(time.Hour)))
 
 	var capturedID uuid.UUID
-	handler := JWTAuth(testSecret)(func(c echo.Context) error {
+	handler := JWTAuth(testSecret, activeUserFinder{})(func(c echo.Context) error {
 		capturedID = c.Get("userID").(uuid.UUID)
 		return okHandler(c)
 	})
@@ -211,7 +213,7 @@ func TestJWTAuth_TokenInCookie_SetsUserID(t *testing.T) {
 func TestJWTAuth_ExpiredTokenInCookie_ReturnsExpiredToken(t *testing.T) {
 	c, rec := newCookieContext(makeToken(t, testSecret, uuid.NewString(), time.Now().Add(-time.Second)))
 
-	require.NoError(t, JWTAuth(testSecret)(okHandler)(c))
+	require.NoError(t, JWTAuth(testSecret, activeUserFinder{})(okHandler)(c))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Equal(t, "EXPIRED_TOKEN", decodeError(t, rec)["code"], "フロントエンドはこの401を受けてリフレッシュする")
@@ -224,7 +226,7 @@ func TestJWTAuth_TokenWithoutExp_Returns401(t *testing.T) {
 	require.NoError(t, err)
 	c, rec := newCookieContext(token)
 
-	require.NoError(t, JWTAuth(testSecret)(okHandler)(c))
+	require.NoError(t, JWTAuth(testSecret, activeUserFinder{})(okHandler)(c))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Equal(t, "INVALID_TOKEN", decodeError(t, rec)["code"])
@@ -235,7 +237,7 @@ func TestOptionalJWTAuth_TokenInCookie_SetsUserID(t *testing.T) {
 	c, rec := newCookieContext(makeToken(t, testSecret, userID.String(), time.Now().Add(time.Hour)))
 
 	var capturedID uuid.UUID
-	handler := OptionalJWTAuth(testSecret)(func(c echo.Context) error {
+	handler := OptionalJWTAuth(testSecret, activeUserFinder{})(func(c echo.Context) error {
 		capturedID, _ = c.Get("userID").(uuid.UUID)
 		return okHandler(c)
 	})
@@ -243,4 +245,11 @@ func TestOptionalJWTAuth_TokenInCookie_SetsUserID(t *testing.T) {
 	require.NoError(t, handler(c))
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, userID, capturedID)
+}
+
+// activeUserFinder はどの ID でも有効な（停止されていない）ユーザーを返すスタブ
+type activeUserFinder struct{}
+
+func (activeUserFinder) FindByID(_ context.Context, id uuid.UUID) (*model.User, error) {
+	return &model.User{ID: id, Status: model.UserStatusApproved}, nil
 }

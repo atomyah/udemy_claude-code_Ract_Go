@@ -124,6 +124,12 @@ const LoginPage = () => {
             </Button>
           </Box>
 
+          <Typography variant="body2" sx={{ textAlign: 'right', mt: -1 }}>
+            <Link component={RouterLink} to="/forgot-password" data-testid="forgot-password-link">
+              パスワードをお忘れの方
+            </Link>
+          </Typography>
+
           <Divider>または</Divider>
 
           <Button

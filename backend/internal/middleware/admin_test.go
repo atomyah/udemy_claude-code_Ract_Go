@@ -28,7 +28,7 @@ func TestAdminOnly_AdminRole_PassesThrough(t *testing.T) {
 	c, rec := newContext("")
 	c.Set("userID", userID)
 
-	require.NoError(t, AdminOnly(&fakeUserFinder{user: &model.User{ID: userID, Role: "admin"}})(okHandler)(c))
+	require.NoError(t, AdminOnly(&fakeUserFinder{user: &model.User{ID: userID, Role: "admin", Status: model.UserStatusApproved}})(okHandler)(c))
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 }

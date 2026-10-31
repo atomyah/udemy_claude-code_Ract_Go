@@ -73,6 +73,7 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 	}
 	resp.Email = &user.Email
 	resp.Role = &user.Role
+	resp.Status = &user.Status
 
 	return c.JSON(http.StatusOK, resp)
 }

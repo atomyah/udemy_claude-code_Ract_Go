@@ -246,7 +246,7 @@ cd frontend && npm run gen:api
 |---------|------|-------|
 | `db_test` | テスト用 PostgreSQL（データは tmpfs で永続化しない） | 5433 |
 | `api_test` | テスト用 API サーバー（`ENV=test`） | 8081 |
-| `adminer` | 開発用 DB 管理 UI（8081 は api_test が使うため 8082 に変更） | 8082 |
+| `adminer` | 開発用 DB 管理 UI。profile `tools` で必要なときだけ起動（`docker compose --profile tools up -d adminer`）。`127.0.0.1` のみ | 8082 |
 
 - テスト環境は Compose の **profile `test`** に属し、`docker compose --profile test up -d` でのみ起動する。
 - 設定は `backend/.env.test`（秘密情報を含まないためコミット可）。開発用 `backend/.env` とは別ファイル。

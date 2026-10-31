@@ -29,6 +29,9 @@ CREATE TABLE users (
     theme         VARCHAR(10) NOT NULL DEFAULT 'light',
     role          VARCHAR(10) NOT NULL DEFAULT 'user', -- 'user' | 'admin'
     is_suspended  BOOLEAN NOT NULL DEFAULT false,
+    status        VARCHAR(10) NOT NULL DEFAULT 'pending', -- 'pending' | 'approved' | 'rejected'（登録審査）
+    reviewed_at   TIMESTAMP WITH TIME ZONE,              -- 管理画面で承認・拒否した日時
+    reviewed_by   VARCHAR(100),                          -- 審査した管理者（例: 'root:admin' / 'admin:yamada'）
     created_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -125,6 +128,13 @@ CREATE TABLE notifications (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 ```
+
+### admins / password_reset_requests / password_reset_tokens（管理画面）
+
+- `admins`: 管理画面の管理者ユーザー（ルート管理者は環境変数で定義し、このテーブルには保存しない）。`username` UNIQUE、`password_hash`（bcrypt）、`role`（現在 'admin' のみ）、`is_active`、`created_by`、`last_login_at`。
+- `password_reset_requests`: ユーザーのパスワードリセット申請。`status` は 'pending' → 'issued' → 'completed'。
+- `password_reset_tokens`: 管理者が発行したリセットリンク。トークンは HMAC ハッシュ（`token_hash`）のみ保存し、`expires_at`・`used_at`（一回限り）・`revoked_at`（再発行で失効）で管理する。
+- 定義は `backend/migrations/008_admin_panel.up.sql`、詳細は `docs/admin-panel.md`。
 
 ---
 

@@ -37,7 +37,7 @@ func likePattern(query string) string {
 func (r *searchRepository) SearchUsers(ctx context.Context, query string, cursor *time.Time, limit int) ([]model.User, *time.Time, error) {
 	like := likePattern(query)
 	q := r.db.WithContext(ctx).
-		Where("is_suspended = false AND (handle ILIKE ? OR display_name ILIKE ?)", like, like)
+		Where("is_suspended = false AND status = 'approved' AND (handle ILIKE ? OR display_name ILIKE ?)", like, like)
 	if cursor != nil {
 		q = q.Where("created_at < ?", *cursor)
 	}

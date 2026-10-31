@@ -14,7 +14,15 @@ export const api = axios.create({
 type RetryableConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
 /** 401 が返ってもリフレッシュしないエンドポイント（認証そのものの成否を返すAPI） */
-const ENDPOINTS_WITHOUT_REFRESH = ['/auth/refresh', '/auth/login', '/auth/register', '/auth/google', '/auth/logout'];
+const ENDPOINTS_WITHOUT_REFRESH = [
+  '/auth/refresh',
+  '/auth/login',
+  '/auth/register',
+  '/auth/google',
+  '/auth/logout',
+  '/auth/password-reset-requests',
+  '/auth/password-reset',
+];
 
 let onSessionExpired: (() => void) | null = null;
 

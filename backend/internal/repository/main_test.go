@@ -35,6 +35,7 @@ func TestMain(m *testing.M) {
 	if err := db.AutoMigrate(
 		&model.User{}, &model.Post{}, &model.Media{}, &model.Like{},
 		&model.Bookmark{}, &model.Follow{}, &model.Hashtag{}, &model.PostHashtag{}, &model.Notification{}, &model.RefreshToken{},
+		&model.Admin{}, &model.PasswordResetRequest{}, &model.PasswordResetToken{},
 	); err != nil {
 		logger.L().Fatal().Err(err).Msg("テストDBマイグレーション失敗")
 	}
@@ -105,6 +106,7 @@ func createUser(t *testing.T, db *gorm.DB, handle string) *model.User {
 		DisplayName: handle + "さん",
 		Theme:       "light",
 		Role:        "user",
+		Status:      model.UserStatusApproved,
 	}
 	if err := db.Create(user).Error; err != nil {
 		t.Fatalf("テストユーザー作成失敗: %v", err)

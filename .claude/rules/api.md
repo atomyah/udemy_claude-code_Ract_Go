@@ -75,6 +75,16 @@ GET    /api/v1/notifications       通知一覧（要認証）
 PUT    /api/v1/notifications/read  全通知を既読にする（要認証）
 ```
 
+#### パスワードリセット（認証不要・認証系レート制限）
+```
+POST   /api/v1/auth/password-reset-requests  パスワードリセット申請（常に 202。登録の有無を返さない）
+POST   /api/v1/auth/password-reset           リセットリンクのトークンでパスワード再設定
+```
+
+#### 管理画面（運営者向け・HTML。API ではないため Swagger 対象外）
+- `/admin` 配下（`html/template`）。一般ユーザーとは別の管理者アカウント（ルート管理者・`admins`）でログインする。
+- URL 一覧は `docs/admin-panel.md`。ルートを追加したらアクセスログ用の操作名を `handler.AdminPanelActions` にも追加する。
+
 #### 管理者（要 admin ロール）
 ```
 DELETE /api/v1/admin/posts/:id             投稿強制削除

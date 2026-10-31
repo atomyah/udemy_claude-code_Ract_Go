@@ -27,6 +27,7 @@ var fieldLabels = map[string]string{
 	"Birthday":        "誕生日",
 	"Theme":           "テーマ",
 	"IDToken":         "IDトークン",
+	"Token":           "リセット用トークン",
 }
 
 // fieldLabel はフィールド名に対応する日本語ラベルを返す（未定義ならフィールド名をそのまま返す）

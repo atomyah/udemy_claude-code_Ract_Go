@@ -37,10 +37,10 @@ func newRateLimitedServer(authLimit, generalLimit int, clock *fakeClock) *echo.E
 	auth.POST("/login", okHandler, authRL)
 	auth.POST("/register", okHandler, authRL)
 
-	api := v1.Group("", OptionalJWTAuth(testSecret), generalRL)
+	api := v1.Group("", OptionalJWTAuth(testSecret, activeUserFinder{}), generalRL)
 	api.GET("/posts", okHandler)
 	api.GET("/search/posts", okHandler)
-	api.GET("/notifications", okHandler, JWTAuth(testSecret))
+	api.GET("/notifications", okHandler, JWTAuth(testSecret, activeUserFinder{}))
 	return e
 }
 

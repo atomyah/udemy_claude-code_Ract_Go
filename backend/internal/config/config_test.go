@@ -2,9 +2,11 @@ package config
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfig_EnvironmentFlags(t *testing.T) {
@@ -61,8 +63,8 @@ func TestConfig_SQLLogAndQueryCountFlags(t *testing.T) {
 }
 
 func TestLoad_ReadsSQLLog(t *testing.T) {
-	t.Setenv("JWT_SECRET", "secret")
-	t.Setenv("JWT_REFRESH_SECRET", "refresh-secret")
+	t.Setenv("JWT_SECRET", testJWTSecret)
+	t.Setenv("JWT_REFRESH_SECRET", testRefreshSecret)
 
 	t.Setenv("SQL_LOG", "true")
 	assert.True(t, Load().SQLLog)
@@ -103,24 +105,24 @@ func TestGetEnv_FallbackWhenUnset(t *testing.T) {
 }
 
 func TestLoad_ReadsEnvironmentVariables(t *testing.T) {
-	t.Setenv("JWT_SECRET", "secret")
-	t.Setenv("JWT_REFRESH_SECRET", "refresh-secret")
+	t.Setenv("JWT_SECRET", testJWTSecret)
+	t.Setenv("JWT_REFRESH_SECRET", testRefreshSecret)
 	t.Setenv("ENV", "test")
 	t.Setenv("PORT", "9999")
 	t.Setenv("CORS_ORIGINS", "http://localhost:5174")
 
 	cfg := Load()
 
-	assert.Equal(t, "secret", cfg.JWTSecret)
-	assert.Equal(t, "refresh-secret", cfg.JWTRefreshSecret)
+	assert.Equal(t, testJWTSecret, cfg.JWTSecret)
+	assert.Equal(t, testRefreshSecret, cfg.JWTRefreshSecret)
 	assert.Equal(t, "9999", cfg.Port)
 	assert.True(t, cfg.IsTest())
 	assert.Equal(t, []string{"http://localhost:5174"}, cfg.AllowedOrigins())
 }
 
 func TestLoad_RateLimitDefaults(t *testing.T) {
-	t.Setenv("JWT_SECRET", "secret")
-	t.Setenv("JWT_REFRESH_SECRET", "refresh-secret")
+	t.Setenv("JWT_SECRET", testJWTSecret)
+	t.Setenv("JWT_REFRESH_SECRET", testRefreshSecret)
 	t.Setenv("RATE_LIMIT_AUTH_PER_MINUTE", "")
 	t.Setenv("RATE_LIMIT_GENERAL_PER_MINUTE", "")
 	t.Setenv("TRUSTED_PROXY_HOPS", "")
@@ -134,8 +136,8 @@ func TestLoad_RateLimitDefaults(t *testing.T) {
 }
 
 func TestLoad_RateLimitOverrideOnlyInTest(t *testing.T) {
-	t.Setenv("JWT_SECRET", "secret")
-	t.Setenv("JWT_REFRESH_SECRET", "refresh-secret")
+	t.Setenv("JWT_SECRET", testJWTSecret)
+	t.Setenv("JWT_REFRESH_SECRET", testRefreshSecret)
 	t.Setenv("RATE_LIMIT_AUTH_PER_MINUTE", "1000")
 	t.Setenv("RATE_LIMIT_GENERAL_PER_MINUTE", "10000")
 
@@ -162,8 +164,8 @@ func TestLoad_RateLimitOverrideOnlyInTest(t *testing.T) {
 }
 
 func TestLoad_TrustedProxyHops(t *testing.T) {
-	t.Setenv("JWT_SECRET", "secret")
-	t.Setenv("JWT_REFRESH_SECRET", "refresh-secret")
+	t.Setenv("JWT_SECRET", testJWTSecret)
+	t.Setenv("JWT_REFRESH_SECRET", testRefreshSecret)
 	t.Setenv("TRUSTED_PROXY_HOPS", "")
 
 	// 本番（Cloud Run）は 1 段、開発・テストは X-Forwarded-For を信頼しない
@@ -182,8 +184,8 @@ func TestLoad_TrustedProxyHops(t *testing.T) {
 }
 
 func TestLoad_CookieSecure(t *testing.T) {
-	t.Setenv("JWT_SECRET", "secret")
-	t.Setenv("JWT_REFRESH_SECRET", "refresh-secret")
+	t.Setenv("JWT_SECRET", testJWTSecret)
+	t.Setenv("JWT_REFRESH_SECRET", testRefreshSecret)
 
 	// 既定は全環境で Secure + SameSite=None
 	t.Setenv("COOKIE_SECURE", "")
@@ -205,5 +207,81 @@ func TestLoad_CookieSecure(t *testing.T) {
 	for _, env := range []string{"test", "production"} {
 		t.Setenv("ENV", env)
 		assert.True(t, Load().CookieSecure, env)
+	}
+}
+
+// テスト用の署名鍵（ValidateSecrets を満たす 32 文字以上・互いに異なる値）
+const (
+	testJWTSecret     = "config-test-jwt-secret-0123456789abcdef"
+	testRefreshSecret = "config-test-refresh-secret-0123456789abcdef"
+)
+
+func TestValidateSecrets_AcceptsLongDistinctRandomValues(t *testing.T) {
+	assert.NoError(t, ValidateSecrets(testJWTSecret, testRefreshSecret))
+	assert.NoError(t, ValidateSecrets(strings.Repeat("a", MinSecretLength), strings.Repeat("b", MinSecretLength)), "32 文字ちょうどは許可")
+}
+
+func TestValidateSecrets_RejectsUnsafeValues(t *testing.T) {
+	cases := []struct {
+		name, jwt, refresh, wantMsg string
+	}{
+		{"JWT_SECRET 未設定", "", testRefreshSecret, "JWT_SECRET が設定されていません"},
+		{"JWT_REFRESH_SECRET 未設定", testJWTSecret, "", "JWT_REFRESH_SECRET が設定されていません"},
+		{"JWT_SECRET が短い", strings.Repeat("a", MinSecretLength-1), testRefreshSecret, "JWT_SECRET は 32 文字以上"},
+		{"JWT_REFRESH_SECRET が短い", testJWTSecret, "short-secret", "JWT_REFRESH_SECRET は 32 文字以上"},
+		{".env.example の見本のまま", "change-me-to-a-random-32-chars-string", testRefreshSecret, "見本の値のまま"},
+		{"見本（大文字・アンダースコア）", testJWTSecret, "CHANGE_ME_CHANGE_ME_CHANGE_ME_CHANGE_ME", "見本の値のまま"},
+		{"同じ値", testJWTSecret, testJWTSecret, "異なる値"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateSecrets(tc.jwt, tc.refresh)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantMsg)
+		})
+	}
+}
+
+// 新規登録ユーザーの自動承認はテスト環境（ENV=test）でだけ有効になる
+func TestLoad_AutoApproveUsersOnlyInTest(t *testing.T) {
+	t.Setenv("JWT_SECRET", testJWTSecret)
+	t.Setenv("JWT_REFRESH_SECRET", testRefreshSecret)
+	t.Setenv("AUTO_APPROVE_USERS", "true")
+
+	for env, want := range map[string]bool{"test": true, "development": false, "production": false} {
+		t.Setenv("ENV", env)
+		assert.Equal(t, want, Load().AutoApproveUsers, env)
+	}
+
+	t.Setenv("ENV", "test")
+	t.Setenv("AUTO_APPROVE_USERS", "")
+	assert.False(t, Load().AutoApproveUsers, "未設定なら自動承認しない")
+}
+
+func TestValidateAdminConfig(t *testing.T) {
+	valid := func() *Config {
+		return &Config{
+			JWTSecret:          testJWTSecret,
+			JWTRefreshSecret:   testRefreshSecret,
+			AdminSessionSecret: "admin_session_secret_for_unit_test_32bytes",
+			AdminRootUsername:  "root",
+			AdminRootPassword:  "root-password-123",
+		}
+	}
+
+	assert.NoError(t, ValidateAdminConfig(valid()), "正しい設定")
+	assert.NoError(t, ValidateAdminConfig(&Config{}), "管理画面を使わない（署名鍵が空）ときは検証しない")
+
+	cases := map[string]func(c *Config){
+		"署名鍵が短い":          func(c *Config) { c.AdminSessionSecret = "short" },
+		"署名鍵が JWT と同じ":    func(c *Config) { c.AdminSessionSecret = c.JWTSecret },
+		"ルートのパスワードだけ未設定":  func(c *Config) { c.AdminRootPassword = "" },
+		"ルートのパスワードが短い":    func(c *Config) { c.AdminRootPassword = "short" },
+		"ルートのパスワードが見本のまま": func(c *Config) { c.AdminRootPassword = "CHANGE_ME_please_123" },
+	}
+	for name, mutate := range cases {
+		c := valid()
+		mutate(c)
+		assert.Error(t, ValidateAdminConfig(c), name)
 	}
 }

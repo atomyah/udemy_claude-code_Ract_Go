@@ -23,4 +23,17 @@ type GoogleLoginRequest struct {
 // トークンはレスポンスボディに含めず、HttpOnly Cookie（access_token / refresh_token）で返す
 type AuthResponse struct {
 	User UserResponse `json:"user"`
+	// PendingApproval は新規登録直後で管理者の承認待ちのとき true（このときは Cookie を発行しないため未ログインのまま）
+	PendingApproval bool `json:"pending_approval,omitempty" example:"false"`
+}
+
+// PasswordResetRequestRequest はパスワードリセット申請リクエスト
+type PasswordResetRequestRequest struct {
+	Email string `json:"email" example:"user@example.com" validate:"required,email,max=255"`
+}
+
+// PasswordResetRequest はリセットリンクのトークンで新しいパスワードを設定するリクエスト
+type PasswordResetRequest struct {
+	Token    string `json:"token"    example:"q8Xv...base64url"  validate:"required,max=100"`
+	Password string `json:"password" example:"newpassword123"     validate:"required,min=8,max=72"`
 }

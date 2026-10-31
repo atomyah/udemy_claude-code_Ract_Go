@@ -1,0 +1,84 @@
+{{define "content"}}
+{{$s := .Data.Summary}}
+<h1>ダッシュボード</h1>
+
+<div class="stats">
+  <a class="stat {{if gt $s.PendingUsers 0}}alert{{end}}" href="/admin/users?status=pending">
+    <div class="label">承認待ちユーザー</div>
+    <div class="value">{{number $s.PendingUsers}}</div>
+    <div class="sub">クリックで審査へ</div>
+  </a>
+  <a class="stat {{if gt $s.PendingResets 0}}alert{{end}}" href="/admin/password-resets?status=pending">
+    <div class="label">未対応のパスワードリセット申請</div>
+    <div class="value">{{number $s.PendingResets}}</div>
+    <div class="sub">リンク発行済み（未完了）: {{number $s.IssuedResets}}</div>
+  </a>
+  <div class="stat">
+    <div class="label">ユーザー数（全体）</div>
+    <div class="value">{{number $s.TotalUsers}}</div>
+    <div class="sub">承認済み {{number $s.ApprovedUsers}} / 拒否 {{number $s.RejectedUsers}} / 停止 {{number $s.SuspendedUsers}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">新規登録（直近 7 日）</div>
+    <div class="value">{{number $s.NewUsers7d}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">アクティブユーザー（直近 7 日に投稿）</div>
+    <div class="value">{{number $s.ActiveUsers7d}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">投稿数（削除済みを除く）</div>
+    <div class="value">{{number $s.TotalPosts}}</div>
+    <div class="sub">今日 {{number $s.PostsToday}} / コメント {{number $s.TotalComments}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">いいね（直近 7 日）</div>
+    <div class="value">{{number $s.Likes7d}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">有効な管理者ユーザー</div>
+    <div class="value">{{number $s.TotalAdmins}}</div>
+    <div class="sub">ルート管理者を除く</div>
+  </div>
+</div>
+
+<div class="card chart">
+  <h2>投稿数・新規登録数の推移（直近 {{len .Data.Chart.Bars}} 日・日本時間）</h2>
+  <svg viewBox="0 0 {{.Data.Chart.Width}} {{.Data.Chart.Height}}" role="img" aria-label="日別の投稿数と新規登録数">
+    <line class="axis" x1="0" y1="{{.Data.Chart.BaseY}}" x2="{{.Data.Chart.Width}}" y2="{{.Data.Chart.BaseY}}"></line>
+    {{range .Data.Chart.Bars}}
+    <g>
+      <title>{{formatDay .Day}} 投稿 {{.Posts}} 件 / 新規登録 {{.Users}} 人</title>
+      <rect class="bar-posts" x="{{.PostsX}}" y="{{.PostsY}}" width="{{.BarWidth}}" height="{{.PostsH}}"></rect>
+      <rect class="bar-users" x="{{.UsersX}}" y="{{.UsersY}}" width="{{.BarWidth}}" height="{{.UsersH}}"></rect>
+      <text x="{{.LabelX}}" y="{{.LabelY}}" text-anchor="middle">{{formatDay .Day}}</text>
+    </g>
+    {{end}}
+  </svg>
+  <div class="legend"><span class="posts">投稿数（最大 {{.Data.Chart.MaxPosts}}）</span><span class="users">新規登録数（最大 {{.Data.Chart.MaxUsers}}）</span></div>
+  <p class="hint">投稿・登録は棒ごとに別の目盛り（各系列の最大値を高さ 100%）で表示しています。棒にカーソルを合わせると件数を表示します。</p>
+</div>
+
+<div class="card">
+  <h2>承認待ちのユーザー（新しい順・最大 5 件）</h2>
+  {{if .Data.PendingUsers}}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ハンドル</th><th>表示名</th><th>登録日時</th><th></th></tr></thead>
+      <tbody>
+      {{range .Data.PendingUsers}}
+        <tr>
+          <td>@{{.Handle}}</td>
+          <td>{{.DisplayName}}</td>
+          <td>{{formatTime .CreatedAt}}</td>
+          <td><a href="/admin/users/{{.ID}}">詳細・審査</a></td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="muted">承認待ちのユーザーはいません。</p>
+  {{end}}
+</div>
+{{end}}

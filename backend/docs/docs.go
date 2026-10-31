@@ -290,6 +290,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
                         }
                     },
+                    "403": {
+                        "description": "管理者の承認待ち（ACCOUNT_PENDING）または登録が拒否された（ACCOUNT_REJECTED）",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "サーバーエラー",
                         "schema": {
@@ -342,6 +348,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
                         }
                     },
+                    "403": {
+                        "description": "管理者の承認待ち（ACCOUNT_PENDING）または登録が拒否された（ACCOUNT_REJECTED）",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "サーバーエラー",
                         "schema": {
@@ -364,6 +376,110 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "ログアウト成功"
+                    },
+                    "500": {
+                        "description": "サーバーエラー",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/password-reset": {
+            "post": {
+                "description": "運営から送付されたリセットリンクのトークンで新しいパスワードを設定する。トークンは有効期限付き・一回限りで、再設定するとほかの端末のログインも無効になる",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "パスワードの再設定",
+                "parameters": [
+                    {
+                        "description": "リセット用トークンと新しいパスワード",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.PasswordResetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "再設定成功",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "バリデーションエラー・トークンが無効または期限切れ（INVALID_RESET_TOKEN）",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "リクエストが多すぎる",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "サーバーエラー",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/password-reset-requests": {
+            "post": {
+                "description": "パスワードリセットを申請する。運営が申請内容を確認し、リセットリンクをメールで送付する（自動送信はしない）。登録の有無を推測されないよう、メールアドレスが未登録でも同じ 202 を返す",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "パスワードリセットの申請",
+                "parameters": [
+                    {
+                        "description": "申請するアカウントのメールアドレス",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.PasswordResetRequestRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "申請を受け付けた",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "バリデーションエラー",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "リクエストが多すぎる",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
                     },
                     "500": {
                         "description": "サーバーエラー",
@@ -408,7 +524,7 @@ const docTemplate = `{
         },
         "/auth/register": {
             "post": {
-                "description": "メールアドレス・パスワード・ハンドル・表示名でユーザーを作成し、Access Token・Refresh Token を HttpOnly Cookie で返す",
+                "description": "メールアドレス・パスワード・ハンドル・表示名でユーザーを作成する。新規ユーザーは管理者の承認待ち（pending）になり、Cookie は発行せず pending_approval=true を返す。承認済みで作成された場合（E2E テスト環境の自動承認）のみ Access Token・Refresh Token を HttpOnly Cookie で返す",
                 "consumes": [
                     "application/json"
                 ],
@@ -2400,6 +2516,11 @@ const docTemplate = `{
         "github_com_atyahara_sns-backend_internal_dto.AuthResponse": {
             "type": "object",
             "properties": {
+                "pending_approval": {
+                    "description": "PendingApproval は新規登録直後で管理者の承認待ちのとき true（このときは Cookie を発行しないため未ログインのまま）",
+                    "type": "boolean",
+                    "example": false
+                },
                 "user": {
                     "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.UserResponse"
                 }
@@ -2591,6 +2712,39 @@ const docTemplate = `{
                 "type": {
                     "type": "string",
                     "example": "like"
+                }
+            }
+        },
+        "github_com_atyahara_sns-backend_internal_dto.PasswordResetRequest": {
+            "type": "object",
+            "required": [
+                "password",
+                "token"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string",
+                    "maxLength": 72,
+                    "minLength": 8,
+                    "example": "newpassword123"
+                },
+                "token": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "example": "q8Xv...base64url"
+                }
+            }
+        },
+        "github_com_atyahara_sns-backend_internal_dto.PasswordResetRequestRequest": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "example": "user@example.com"
                 }
             }
         },
@@ -2922,6 +3076,16 @@ const docTemplate = `{
                     "description": "Role は本人の情報（ログイン・リフレッシュ・GET /users/me）のときだけ返す（他人のプロフィールでは省略）",
                     "type": "string",
                     "example": "user"
+                },
+                "status": {
+                    "description": "Status は登録審査の状態（pending / approved / rejected）。本人の情報のときだけ返す",
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "approved",
+                        "rejected"
+                    ],
+                    "example": "approved"
                 },
                 "theme": {
                     "type": "string",

@@ -39,6 +39,10 @@ definitions:
     type: object
   github_com_atyahara_sns-backend_internal_dto.AuthResponse:
     properties:
+      pending_approval:
+        description: PendingApproval は新規登録直後で管理者の承認待ちのとき true（このときは Cookie を発行しないため未ログインのまま）
+        example: false
+        type: boolean
       user:
         $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.UserResponse'
     type: object
@@ -174,6 +178,30 @@ definitions:
       type:
         example: like
         type: string
+    type: object
+  github_com_atyahara_sns-backend_internal_dto.PasswordResetRequest:
+    properties:
+      password:
+        example: newpassword123
+        maxLength: 72
+        minLength: 8
+        type: string
+      token:
+        example: q8Xv...base64url
+        maxLength: 100
+        type: string
+    required:
+    - password
+    - token
+    type: object
+  github_com_atyahara_sns-backend_internal_dto.PasswordResetRequestRequest:
+    properties:
+      email:
+        example: user@example.com
+        maxLength: 255
+        type: string
+    required:
+    - email
     type: object
   github_com_atyahara_sns-backend_internal_dto.PostListResponse:
     properties:
@@ -413,6 +441,14 @@ definitions:
         description: Role は本人の情報（ログイン・リフレッシュ・GET /users/me）のときだけ返す（他人のプロフィールでは省略）
         example: user
         type: string
+      status:
+        description: Status は登録審査の状態（pending / approved / rejected）。本人の情報のときだけ返す
+        enum:
+        - pending
+        - approved
+        - rejected
+        example: approved
+        type: string
       theme:
         example: light
         type: string
@@ -605,6 +641,10 @@ paths:
           description: IDトークンが無効
           schema:
             $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse'
+        "403":
+          description: 管理者の承認待ち（ACCOUNT_PENDING）または登録が拒否された（ACCOUNT_REJECTED）
+          schema:
+            $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse'
         "500":
           description: サーバーエラー
           schema:
@@ -639,6 +679,10 @@ paths:
           description: メールアドレスまたはパスワードが不正
           schema:
             $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse'
+        "403":
+          description: 管理者の承認待ち（ACCOUNT_PENDING）または登録が拒否された（ACCOUNT_REJECTED）
+          schema:
+            $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse'
         "500":
           description: サーバーエラー
           schema:
@@ -660,6 +704,75 @@ paths:
           schema:
             $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse'
       summary: ログアウト
+      tags:
+      - auth
+  /auth/password-reset:
+    post:
+      consumes:
+      - application/json
+      description: 運営から送付されたリセットリンクのトークンで新しいパスワードを設定する。トークンは有効期限付き・一回限りで、再設定するとほかの端末のログインも無効になる
+      parameters:
+      - description: リセット用トークンと新しいパスワード
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.PasswordResetRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 再設定成功
+          schema:
+            $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.SuccessResponse'
+        "400":
+          description: バリデーションエラー・トークンが無効または期限切れ（INVALID_RESET_TOKEN）
+          schema:
+            $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse'
+        "429":
+          description: リクエストが多すぎる
+          schema:
+            $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse'
+        "500":
+          description: サーバーエラー
+          schema:
+            $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse'
+      summary: パスワードの再設定
+      tags:
+      - auth
+  /auth/password-reset-requests:
+    post:
+      consumes:
+      - application/json
+      description: パスワードリセットを申請する。運営が申請内容を確認し、リセットリンクをメールで送付する（自動送信はしない）。登録の有無を推測されないよう、メールアドレスが未登録でも同じ
+        202 を返す
+      parameters:
+      - description: 申請するアカウントのメールアドレス
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.PasswordResetRequestRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: 申請を受け付けた
+          schema:
+            $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.SuccessResponse'
+        "400":
+          description: バリデーションエラー
+          schema:
+            $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse'
+        "429":
+          description: リクエストが多すぎる
+          schema:
+            $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse'
+        "500":
+          description: サーバーエラー
+          schema:
+            $ref: '#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse'
+      summary: パスワードリセットの申請
       tags:
       - auth
   /auth/refresh:
@@ -688,8 +801,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: メールアドレス・パスワード・ハンドル・表示名でユーザーを作成し、Access Token・Refresh Token を HttpOnly
-        Cookie で返す
+      description: メールアドレス・パスワード・ハンドル・表示名でユーザーを作成する。新規ユーザーは管理者の承認待ち（pending）になり、Cookie
+        は発行せず pending_approval=true を返す。承認済みで作成された場合（E2E テスト環境の自動承認）のみ Access Token・Refresh
+        Token を HttpOnly Cookie で返す
       parameters:
       - description: 登録情報
         in: body

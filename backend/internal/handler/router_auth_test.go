@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,7 +26,7 @@ func newProtectedRouter(t *testing.T) *echo.Echo {
 
 	e := echo.New()
 	v1 := e.Group("/api/v1")
-	jwtMiddleware := appMiddleware.JWTAuth(routerTestSecret)
+	jwtMiddleware := appMiddleware.JWTAuth(routerTestSecret, activeUsers{})
 
 	postSvc := new(mockPostSvc)
 	postHandler := NewPostHandler(postSvc, new(mockCommentSvc))
@@ -115,7 +116,7 @@ func newAdminRouter(t *testing.T, adminSvc *mockAdminSvc, users *mockUserRepo) *
 	v1 := e.Group("/api/v1")
 	adminHandler := NewAdminHandler(adminSvc)
 
-	admin := v1.Group("/admin", appMiddleware.JWTAuth(routerTestSecret), appMiddleware.AdminOnly(users))
+	admin := v1.Group("/admin", appMiddleware.JWTAuth(routerTestSecret, users), appMiddleware.AdminOnly(users))
 	admin.DELETE("/posts/:id", adminHandler.AdminDeletePost)
 	admin.PUT("/users/:id/suspend", adminHandler.SuspendUser)
 	admin.DELETE("/users/:id/suspend", adminHandler.UnsuspendUser)
@@ -166,7 +167,7 @@ func TestAdminEndpoints_WithNormalUserToken_Return403(t *testing.T) {
 	// ロールはトークンではなくDBのユーザー情報で判定する
 	userID := uuid.New()
 	users := new(mockUserRepo)
-	users.On("FindByID", mock.Anything, userID).Return(&model.User{ID: userID, Role: "user"}, nil)
+	users.On("FindByID", mock.Anything, userID).Return(&model.User{ID: userID, Role: "user", Status: model.UserStatusApproved}, nil)
 	e := newAdminRouter(t, adminSvc, users)
 	token := routerToken(t, userID.String(), time.Now().Add(time.Hour))
 
@@ -194,7 +195,7 @@ func TestAdminEndpoint_WithAdminToken_ReachesHandler(t *testing.T) {
 	adminSvc.On("ForceDeletePost", mock.Anything, postID).Return(nil)
 	adminID := uuid.New()
 	users := new(mockUserRepo)
-	users.On("FindByID", mock.Anything, adminID).Return(&model.User{ID: adminID, Role: "admin"}, nil)
+	users.On("FindByID", mock.Anything, adminID).Return(&model.User{ID: adminID, Role: "admin", Status: model.UserStatusApproved}, nil)
 	e := newAdminRouter(t, adminSvc, users)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/posts/"+postID.String(), nil)
@@ -218,7 +219,7 @@ func TestOptionalAuthEndpoint_WithoutToken_Returns200(t *testing.T) {
 	e := echo.New()
 	v1 := e.Group("/api/v1")
 	v1.GET("/posts", NewPostHandler(postSvc, new(mockCommentSvc)).GetExplore,
-		appMiddleware.OptionalJWTAuth(routerTestSecret))
+		appMiddleware.OptionalJWTAuth(routerTestSecret, activeUsers{}))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/posts", nil)
 	rec := httptest.NewRecorder()
@@ -241,4 +242,11 @@ func TestProtectedEndpoint_WithTokenInCookie_PassesAuthentication(t *testing.T) 
 	e.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+// activeUsers はどの ID でも有効な（停止されていない）ユーザーを返す、認証ミドルウェア用のスタブ
+type activeUsers struct{}
+
+func (activeUsers) FindByID(_ context.Context, id uuid.UUID) (*model.User, error) {
+	return &model.User{ID: id, Status: model.UserStatusApproved}, nil
 }

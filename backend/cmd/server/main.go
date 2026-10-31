@@ -44,6 +44,7 @@ import (
 	"net/http"
 
 	"github.com/atyahara/sns-backend/docs"
+	"github.com/atyahara/sns-backend/internal/adminui"
 	"github.com/atyahara/sns-backend/internal/config"
 	"github.com/atyahara/sns-backend/internal/handler"
 	"github.com/atyahara/sns-backend/internal/httperr"
@@ -73,6 +74,10 @@ func main() {
 	notificationRepo := repository.NewNotificationRepository(db)
 	searchRepo := repository.NewSearchRepository(db)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
+	adminRepo := repository.NewAdminRepository(db)
+	adminUserRepo := repository.NewAdminUserRepository(db)
+	passwordResetRepo := repository.NewPasswordResetRepository(db)
+	dashboardRepo := repository.NewDashboardRepository(db)
 
 	// Firebaseは開発・本番では必須。テスト環境（ENV=test）では認証情報がなくても
 	// サーバーを起動できるようにする（E2Eテストはメール＋パスワード認証のみ使うため）
@@ -95,6 +100,7 @@ func main() {
 	commentSvc := service.NewCommentService(postRepo, postSvc, notificationSvc)
 	searchSvc := service.NewSearchService(searchRepo, hashtagRepo, postRepo, followRepo, postSvc)
 	adminSvc := service.NewAdminService(postRepo, userRepo, refreshTokenRepo)
+	passwordResetSvc := service.NewPasswordResetService(cfg, userRepo, passwordResetRepo)
 
 	authHandler := handler.NewAuthHandler(authSvc, handler.AuthCookieConfig{
 		Secure:   cfg.CookieSecure,
@@ -106,6 +112,7 @@ func main() {
 	searchHandler := handler.NewSearchHandler(searchSvc)
 	notificationHandler := handler.NewNotificationHandler(notificationSvc)
 	adminHandler := handler.NewAdminHandler(adminSvc)
+	passwordResetHandler := handler.NewPasswordResetHandler(passwordResetSvc)
 
 	// ============================================================
 	// Echo セットアップ
@@ -158,8 +165,8 @@ func main() {
 	// ============================================================
 	v1 := e.Group("/api/v1")
 
-	jwtMiddleware := appMiddleware.JWTAuth(cfg.JWTSecret)
-	optionalAuthMiddleware := appMiddleware.OptionalJWTAuth(cfg.JWTSecret)
+	jwtMiddleware := appMiddleware.JWTAuth(cfg.JWTSecret, userRepo)
+	optionalAuthMiddleware := appMiddleware.OptionalJWTAuth(cfg.JWTSecret, userRepo)
 	adminMiddleware := appMiddleware.AdminOnly(userRepo)
 
 	// レートリミット（インメモリ・fixed window。Cloud Run の max instances = 1 構成が前提）
@@ -173,6 +180,8 @@ func main() {
 	auth.POST("/register", authHandler.Register, authRateLimit)
 	auth.POST("/login", authHandler.Login, authRateLimit)
 	auth.POST("/google", authHandler.GoogleLogin, authRateLimit)
+	auth.POST("/password-reset-requests", passwordResetHandler.RequestReset, authRateLimit)
+	auth.POST("/password-reset", passwordResetHandler.ResetPassword, authRateLimit)
 	auth.POST("/logout", authHandler.Logout, generalRateLimit)
 	auth.POST("/refresh", authHandler.Refresh, generalRateLimit)
 	// 全デバイスからログアウト（要認証）。ユーザーID単位で数えるため、トークン確認 → レート制限 → 必須認証の順に置く
@@ -233,6 +242,48 @@ func main() {
 	admin.DELETE("/users/:id/suspend", adminHandler.UnsuspendUser)
 	admin.GET("/users", adminHandler.ListUsers)
 
+	// ============================================================
+	// 管理画面（運営者向け・html/template）
+	// SNS アプリの一般ユーザー（users.role=admin を含む）とは別の、管理画面専用アカウントでログインする
+	// ============================================================
+	if cfg.AdminPanelEnabled() {
+		renderer, err := adminui.NewRenderer()
+		if err != nil {
+			logger.L().Fatal().Err(err).Msg("admin panel templates load failed")
+		}
+		adminPanelSvc := service.NewAdminPanelService(cfg, userRepo, adminUserRepo, adminRepo, passwordResetRepo, dashboardRepo, refreshTokenRepo)
+		adminPanelHandler := handler.NewAdminPanelHandler(adminPanelSvc, renderer, cfg.AdminSessionSecret, cfg.CookieSecure, cfg.PasswordResetTokenTTL)
+
+		// 全ルートにセキュリティヘッダー・リクエストサイズ上限（フォームのみのため 64KB）・一般 API と同じレート制限を掛ける。
+		// ログインは認証系のレート制限（IP あたり 5 回/分）も掛けてブルートフォースを防ぐ
+		panel := e.Group("/admin", appMiddleware.AdminSecurityHeaders(), middleware.BodyLimit("64K"), generalRateLimit)
+		panel.GET("/static/*", echo.WrapHandler(http.StripPrefix("/admin/static/", http.FileServer(http.FS(adminui.StaticFS())))))
+		panel.GET("/login", adminPanelHandler.LoginPage)
+		panel.POST("/login", adminPanelHandler.Login, authRateLimit)
+
+		// ログインページ以外はすべて管理者セッションの確認（＋ POST は CSRF トークンの検証）を通す
+		adminSession := appMiddleware.AdminSession(cfg.AdminSessionSecret, adminRepo, cfg.CookieSecure)
+		panelAuthed := panel.Group("", adminSession)
+		panelAuthed.POST("/logout", adminPanelHandler.Logout)
+		panelAuthed.GET("", adminPanelHandler.Dashboard)
+		panelAuthed.GET("/", adminPanelHandler.Dashboard)
+		panelAuthed.GET("/users", adminPanelHandler.ListUsers)
+		panelAuthed.GET("/users/:id", adminPanelHandler.GetUser)
+		panelAuthed.POST("/users/:id/approve", adminPanelHandler.ApproveUser)
+		panelAuthed.POST("/users/:id/reject", adminPanelHandler.RejectUser)
+		panelAuthed.GET("/password-resets", adminPanelHandler.ListPasswordResets)
+		panelAuthed.POST("/password-resets/:id/issue", adminPanelHandler.IssuePasswordResetLink)
+		panelAuthed.GET("/admins", adminPanelHandler.ListAdmins)
+		panelAuthed.POST("/admins", adminPanelHandler.CreateAdmin)
+
+		if !cfg.RootAdminEnabled() {
+			logger.L().Warn().Msg("ADMIN_ROOT_USERNAME / ADMIN_ROOT_PASSWORD are not set: root admin login is disabled")
+		}
+		logger.L().Info().Str("path", "/admin").Msg("admin panel enabled")
+	} else {
+		logger.L().Warn().Msg("ADMIN_SESSION_SECRET is not set: admin panel (/admin) is disabled")
+	}
+
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	logger.L().Info().Str("addr", addr).Str("env", cfg.Env).Msg("server started")
 	if err := e.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -246,7 +297,11 @@ func accessLogActions() appMiddleware.ActionCatalog {
 	actions, err := appMiddleware.ActionsFromSwagger([]byte(docs.SwaggerInfo.ReadDoc()), docs.SwaggerInfo.BasePath)
 	if err != nil {
 		logger.L().Warn().Err(err).Msg("failed to load access log actions from swagger")
-		return appMiddleware.ActionCatalog{}
+		actions = appMiddleware.ActionCatalog{}
 	}
+	for route, name := range handler.AdminPanelActions {
+		actions[route] = name
+	}
+	actions["GET /admin/"] = handler.AdminPanelActions["GET /admin"]
 	return actions
 }

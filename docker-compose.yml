@@ -5,16 +5,17 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-sns_db}
-      POSTGRES_USER: ${POSTGRES_USER:-sns_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sns_password}
+    # POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD は backend/.env で設定する（API の DATABASE_URL と同じファイルで管理）。
+    # パスワードはコンテナ初回起動（ボリューム作成）時にだけ反映される
+    env_file:
+      - ./backend/.env
     ports:
-      - "5432:5432"
+      # LAN に公開しない（ループバックのみ）。ホストからは localhost:5432、通常は `docker compose exec db psql` を使う
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sns_user} -d ${POSTGRES_DB:-sns_db}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -35,12 +36,14 @@ services:
       db:
         condition: service_healthy
 
+  # DB 管理 UI。既定では起動しない（profile: tools）。必要なときだけ
+  # `docker compose --profile tools up -d adminer` で起動し、使い終わったら `docker compose stop adminer` で止める
   adminer:
-    image: adminer:4-standalone
-    restart: unless-stopped
+    profiles: ["tools"]
+    image: adminer:4.17.1-standalone
     ports:
-      # 8081 はテスト用APIサーバー（api_test）が使うため 8082 に変更
-      - "8082:8080"
+      # LAN に公開しない（ループバックのみ）。8081 はテスト用APIサーバー（api_test）が使うため 8082
+      - "127.0.0.1:8082:8080"
     depends_on:
       db:
         condition: service_healthy
@@ -59,7 +62,8 @@ services:
       POSTGRES_USER: sns_test_user
       POSTGRES_PASSWORD: sns_test_password
     ports:
-      - "5433:5432"
+      # LAN に公開しない（ループバックのみ）
+      - "127.0.0.1:5433:5432"
     # データはtmpfs（メモリ）に置き永続化しない。開発用ボリュームには触れない
     tmpfs:
       - /var/lib/postgresql/data

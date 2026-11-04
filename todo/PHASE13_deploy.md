@@ -9,7 +9,7 @@
 - [ ] Firebase プロジェクトを作成（本番用）
 - [ ] Firebase Storage のバケットを作成し、公開ルールを設定
 - [ ] Firebase Auth で Google プロバイダーを有効化
-- [ ] PostgreSQL 本番データベースを用意（Render PostgreSQL / Cloud SQL / Supabase など）
+- [ ] PostgreSQL 本番データベースを用意（Neon。手順は `docs/deploy.md` の 4 章）
 - [ ] 本番用の JWT シークレットを生成（32 バイト以上のランダム文字列）
 
 ---
@@ -42,7 +42,7 @@
 - [ ] `gcloud builds submit --tag gcr.io/<PROJECT_ID>/sns-backend ./backend`
 - [ ] Secret Manager に JWT シークレット・Firebase 認証情報を登録
 - [ ] Cloud Run サービスを作成してシークレットを環境変数としてマウント
-- [ ] Cloud SQL Auth Proxy の設定（Cloud SQL 使用時）
+- [ ] `DATABASE_URL` に Neon のプール接続 URL（`sslmode=require&connect_timeout=5`）を Secret Manager 経由で設定
 
 ---
 

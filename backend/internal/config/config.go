@@ -50,6 +50,8 @@ type Config struct {
 	FrontendBaseURL string
 	// PasswordResetTokenTTL はパスワードリセットリンクの有効期限
 	PasswordResetTokenTTL time.Duration
+	// MediaSignedURLTTL は投稿メディアの署名付きURLの有効期限
+	MediaSignedURLTTL time.Duration
 }
 
 // レートリミットの既定値（非機能要件: 認証系 5 回/分、一般 60 回/分）
@@ -62,6 +64,12 @@ const (
 const (
 	DefaultPasswordResetTTLMinutes = 24 * 60
 	MaxPasswordResetTTLMinutes     = 7 * 24 * 60
+)
+
+// 投稿メディアの署名付きURLの有効期限（分）の既定値・上限（V4 署名の上限は 7 日）
+const (
+	DefaultMediaSignedURLTTLMinutes = 60
+	MaxMediaSignedURLTTLMinutes     = 7 * 24 * 60
 )
 
 // Load は環境変数から設定を読み込む
@@ -114,6 +122,11 @@ func Load() *Config {
 		ttlMinutes = MaxPasswordResetTTLMinutes
 	}
 	cfg.PasswordResetTokenTTL = time.Duration(ttlMinutes) * time.Minute
+	mediaTTLMinutes := getEnvInt("MEDIA_SIGNED_URL_TTL_MINUTES", DefaultMediaSignedURLTTLMinutes, 1)
+	if mediaTTLMinutes > MaxMediaSignedURLTTLMinutes {
+		mediaTTLMinutes = MaxMediaSignedURLTTLMinutes
+	}
+	cfg.MediaSignedURLTTL = time.Duration(mediaTTLMinutes) * time.Minute
 
 	if cfg.LogLevel == "" && cfg.IsTest() && cfg.SQLLog {
 		cfg.LogLevel = "debug"

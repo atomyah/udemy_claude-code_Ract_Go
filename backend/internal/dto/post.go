@@ -8,10 +8,10 @@ type UserInPost struct {
 	AvatarURL   *string `json:"avatar_url"   example:"https://storage.googleapis.com/bucket/avatar.jpg"`
 }
 
-// MediaResponse はメディアファイル情報
+// MediaResponse はメディアファイル情報。URL は期限付きの署名付きURLのため、保存せず表示にだけ使う
 type MediaResponse struct {
 	ID        string `json:"id"         example:"550e8400-e29b-41d4-a716-446655440001"`
-	URL       string `json:"url"        example:"https://storage.googleapis.com/bucket/image.jpg"`
+	URL       string `json:"url"        example:"https://storage.googleapis.com/bucket/posts/550e8400-e29b-41d4-a716-446655440003/550e8400-e29b-41d4-a716-446655440001.jpg?X-Goog-Algorithm=GOOG4-RSA-SHA256"`
 	Type      string `json:"type"       example:"image"`
 	SortOrder int    `json:"sort_order" example:"0"`
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"mime/multipart"
 	"testing"
 	"time"
@@ -44,7 +45,7 @@ func newFileHeaders(t *testing.T, contents ...[]byte) []*multipart.FileHeader {
 
 // newPostService はモックを注入したPostServiceを組み立てる
 func newPostService(postRepo *mockPostRepo, likeRepo *mockLikeRepo, bookmarkRepo *mockBookmarkRepo) PostService {
-	return NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), new(mockUserRepo), likeRepo, bookmarkRepo, new(mockStorageSvc), new(mockNotificationSvc))
+	return NewPostService(postRepo, new(mockHashtagRepo), new(mockUserRepo), likeRepo, bookmarkRepo, new(mockStorageSvc), new(mockNotificationSvc))
 }
 
 // expectStats はToPostResponse(s)が呼ぶ集計値の一括取得モックを設定する（集計値はすべて0）
@@ -163,6 +164,219 @@ func TestPostService_CreatePost_UnsupportedFileType(t *testing.T) {
 	_, err := svc.CreatePost(context.Background(), uuid.New(), "テキストファイル", files)
 
 	assert.ErrorIs(t, err, ErrUnsupportedFileType)
+}
+
+// newPostServiceWithStorage はストレージのモックを差し替えたPostServiceを組み立てる
+func newPostServiceWithStorage(postRepo *mockPostRepo, storageSvc *mockStorageSvc) PostService {
+	return NewPostService(postRepo, new(mockHashtagRepo), new(mockUserRepo), new(mockLikeRepo), new(mockBookmarkRepo), storageSvc, new(mockNotificationSvc))
+}
+
+func TestPostService_CreatePost_WithFourImages_SavesPathsInOrderAndReturnsSignedURLs(t *testing.T) {
+	userID := uuid.New()
+	files := newFileHeaders(t, pngBytes, pngBytes, pngBytes, pngBytes)
+
+	postRepo := new(mockPostRepo)
+	storageSvc := new(mockStorageSvc)
+
+	var uploadedTo uuid.UUID
+	for i, fh := range files {
+		storageSvc.On("UploadPostMedia", mock.Anything, mock.AnythingOfType("uuid.UUID"), fh).
+			Run(func(args mock.Arguments) { uploadedTo = args.Get(1).(uuid.UUID) }).
+			Return(fmt.Sprintf("posts/p/%d.png", i), "image", nil).Once()
+		storageSvc.On("SignedURL", fmt.Sprintf("posts/p/%d.png", i)).
+			Return(fmt.Sprintf("https://signed.example.com/%d", i), nil)
+	}
+
+	// FindByID は Create で保存された内容をそのまま返す
+	var created *model.Post
+	postRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Post")).
+		Run(func(args mock.Arguments) {
+			created = args.Get(1).(*model.Post)
+			postRepo.On("FindByID", mock.Anything, created.ID).Return(created, nil)
+		}).Return(nil)
+	expectStats(postRepo)
+
+	resp, err := newPostServiceWithStorage(postRepo, storageSvc).CreatePost(context.Background(), userID, "4枚の画像", files)
+
+	require.NoError(t, err)
+	// アップロード先のパスに使う投稿IDと、保存する投稿のIDが一致する
+	assert.Equal(t, uploadedTo, created.ID)
+	require.Len(t, created.Media, 4)
+	for i, m := range created.Media {
+		assert.Equal(t, fmt.Sprintf("posts/p/%d.png", i), m.StoragePath)
+		assert.Equal(t, i, m.SortOrder)
+		assert.Equal(t, "image", m.Type)
+		// 期限切れになる署名付きURLはDBに保存しない
+		assert.Empty(t, m.URL)
+	}
+	require.Len(t, resp.Media, 4)
+	assert.Equal(t, "https://signed.example.com/0", resp.Media[0].URL)
+	assert.Equal(t, "https://signed.example.com/3", resp.Media[3].URL)
+	storageSvc.AssertNotCalled(t, "DeleteObjects", mock.Anything, mock.Anything)
+}
+
+func TestPostService_CreatePost_WithoutImages_DoesNotTouchStorage(t *testing.T) {
+	userID := uuid.New()
+	postID := uuid.New()
+	postRepo := new(mockPostRepo)
+	storageSvc := new(mockStorageSvc)
+	postRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Post")).
+		Run(func(args mock.Arguments) { args.Get(1).(*model.Post).ID = postID }).Return(nil)
+	postRepo.On("FindByID", mock.Anything, postID).Return(&model.Post{ID: postID, UserID: userID, Content: "本文のみ"}, nil)
+	expectStats(postRepo)
+
+	resp, err := newPostServiceWithStorage(postRepo, storageSvc).CreatePost(context.Background(), userID, "本文のみ", nil)
+
+	require.NoError(t, err)
+	assert.NotNil(t, resp.Media, "画像なしでも null ではなく空配列を返す")
+	assert.Empty(t, resp.Media)
+	storageSvc.AssertNotCalled(t, "UploadPostMedia", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestPostService_CreatePost_ImageTooLarge_RejectedBeforeUpload(t *testing.T) {
+	postRepo := new(mockPostRepo)
+	storageSvc := new(mockStorageSvc)
+	files := newFileHeaders(t, pngBytes, pngBytes)
+	files[1].Size = maxImageSize + 1
+
+	_, err := newPostServiceWithStorage(postRepo, storageSvc).CreatePost(context.Background(), uuid.New(), "大きい画像", files)
+
+	assert.ErrorIs(t, err, ErrFileTooLarge)
+	storageSvc.AssertNotCalled(t, "UploadPostMedia", mock.Anything, mock.Anything, mock.Anything)
+	postRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+}
+
+func TestPostService_CreatePost_VideoTooLarge_RejectedBeforeUpload(t *testing.T) {
+	storageSvc := new(mockStorageSvc)
+	files := newFileHeaders(t, mp4Bytes)
+	files[0].Size = maxVideoSize + 1
+
+	_, err := newPostServiceWithStorage(new(mockPostRepo), storageSvc).CreatePost(context.Background(), uuid.New(), "大きい動画", files)
+
+	assert.ErrorIs(t, err, ErrFileTooLarge)
+	storageSvc.AssertNotCalled(t, "UploadPostMedia", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestPostService_CreatePost_UploadFails_DeletesUploadedAndCreatesNoPost(t *testing.T) {
+	postRepo := new(mockPostRepo)
+	storageSvc := new(mockStorageSvc)
+	files := newFileHeaders(t, pngBytes, pngBytes)
+	storageSvc.On("UploadPostMedia", mock.Anything, mock.Anything, files[0]).Return("posts/p/0.png", "image", nil)
+	storageSvc.On("UploadPostMedia", mock.Anything, mock.Anything, files[1]).Return("", "", assert.AnError)
+	storageSvc.On("DeleteObjects", mock.Anything, []string{"posts/p/0.png"}).Return()
+
+	_, err := newPostServiceWithStorage(postRepo, storageSvc).CreatePost(context.Background(), uuid.New(), "途中で失敗", files)
+
+	assert.ErrorIs(t, err, assert.AnError)
+	storageSvc.AssertExpectations(t)
+	postRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+}
+
+func TestPostService_CreatePost_SaveFails_DeletesUploadedObjects(t *testing.T) {
+	postRepo := new(mockPostRepo)
+	storageSvc := new(mockStorageSvc)
+	files := newFileHeaders(t, pngBytes)
+	storageSvc.On("UploadPostMedia", mock.Anything, mock.Anything, files[0]).Return("posts/p/0.png", "image", nil)
+	storageSvc.On("DeleteObjects", mock.Anything, []string{"posts/p/0.png"}).Return()
+	postRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Post")).Return(assert.AnError)
+
+	_, err := newPostServiceWithStorage(postRepo, storageSvc).CreatePost(context.Background(), uuid.New(), "保存に失敗", files)
+
+	assert.ErrorIs(t, err, assert.AnError)
+	storageSvc.AssertExpectations(t)
+}
+
+func TestToMediaResponses(t *testing.T) {
+	signedID := uuid.New()
+	legacyID := uuid.New()
+	brokenID := uuid.New()
+	storageSvc := new(mockStorageSvc)
+	storageSvc.On("SignedURL", "posts/p/ok.png").Return("https://signed.example.com/ok", nil)
+	storageSvc.On("SignedURL", "posts/p/broken.png").Return("", assert.AnError)
+
+	resp := toMediaResponses(context.Background(), storageSvc, []model.Media{
+		{ID: signedID, StoragePath: "posts/p/ok.png", Type: "image", SortOrder: 0},
+		{ID: legacyID, URL: "https://storage.googleapis.com/bucket/posts/old.png", Type: "image", SortOrder: 1},
+		{ID: brokenID, StoragePath: "posts/p/broken.png", Type: "image", SortOrder: 2},
+	})
+
+	require.Len(t, resp, 2, "署名に失敗したメディアだけをレスポンスから外す")
+	assert.Equal(t, signedID.String(), resp[0].ID)
+	assert.Equal(t, "https://signed.example.com/ok", resp[0].URL)
+	// 公開URLで保存した既存行はそのまま返す（署名しない）
+	assert.Equal(t, legacyID.String(), resp[1].ID)
+	assert.Equal(t, "https://storage.googleapis.com/bucket/posts/old.png", resp[1].URL)
+	storageSvc.AssertNotCalled(t, "SignedURL", "https://storage.googleapis.com/bucket/posts/old.png")
+}
+
+func TestPostService_ToPostResponses_SignsRepostOriginalMedia(t *testing.T) {
+	postRepo := new(mockPostRepo)
+	expectStats(postRepo)
+	storageSvc := new(mockStorageSvc)
+	storageSvc.On("SignedURL", "posts/o/1.png").Return("https://signed.example.com/original", nil)
+
+	original := &model.Post{ID: uuid.New(), Media: []model.Media{{ID: uuid.New(), StoragePath: "posts/o/1.png", Type: "image"}}}
+	repost := model.Post{ID: uuid.New(), RepostOfPost: original}
+
+	resps, err := newPostServiceWithStorage(postRepo, storageSvc).ToPostResponses(context.Background(), []model.Post{repost}, nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, resps[0].RepostOf)
+	require.Len(t, resps[0].RepostOf.Media, 1)
+	assert.Equal(t, "https://signed.example.com/original", resps[0].RepostOf.Media[0].URL)
+}
+
+func TestPostService_ToPostResponses_HidesDeletedRepostOriginal(t *testing.T) {
+	postRepo := new(mockPostRepo)
+	expectStats(postRepo)
+	storageSvc := new(mockStorageSvc)
+
+	original := &model.Post{
+		ID:        uuid.New(),
+		Content:   "削除された本文",
+		IsDeleted: true,
+		Media:     []model.Media{{ID: uuid.New(), StoragePath: "posts/o/1.png", Type: "image"}},
+	}
+	repost := model.Post{ID: uuid.New(), RepostOfPost: original}
+
+	resps, err := newPostServiceWithStorage(postRepo, storageSvc).ToPostResponses(context.Background(), []model.Post{repost}, nil)
+
+	require.NoError(t, err)
+	assert.Nil(t, resps[0].RepostOf)
+	// 削除済み投稿のメディアには署名付きURLを発行しない
+	storageSvc.AssertNotCalled(t, "SignedURL", mock.Anything)
+}
+
+func TestNotificationService_GetNotifications_HidesDeletedPost(t *testing.T) {
+	userID := uuid.New()
+	storageSvc := new(mockStorageSvc)
+	storageSvc.On("SignedURL", "posts/a/1.png").Return("https://signed.example.com/active", nil)
+
+	deleted := model.Notification{ID: uuid.New(), Type: "like", Post: &model.Post{
+		ID:        uuid.New(),
+		Content:   "削除された本文",
+		IsDeleted: true,
+		Media:     []model.Media{{ID: uuid.New(), StoragePath: "posts/d/1.png", Type: "image"}},
+	}}
+	active := model.Notification{ID: uuid.New(), Type: "like", Post: &model.Post{
+		ID:      uuid.New(),
+		Content: "公開中の本文",
+		Media:   []model.Media{{ID: uuid.New(), StoragePath: "posts/a/1.png", Type: "image"}},
+	}}
+
+	notificationRepo := new(mockNotificationRepo)
+	notificationRepo.On("GetByUser", mock.Anything, userID, (*time.Time)(nil), 20).
+		Return([]model.Notification{deleted, active}, nil, nil)
+	notificationRepo.On("CountUnread", mock.Anything, userID).Return(2, nil)
+
+	resp, err := NewNotificationService(notificationRepo, storageSvc).GetNotifications(context.Background(), userID, "", 20)
+
+	require.NoError(t, err)
+	require.Len(t, resp.Data, 2, "投稿が削除されても通知自体は残す")
+	assert.Nil(t, resp.Data[0].Post)
+	require.NotNil(t, resp.Data[1].Post)
+	assert.Equal(t, "公開中の本文", resp.Data[1].Post.Content)
+	storageSvc.AssertNotCalled(t, "SignedURL", "posts/d/1.png")
 }
 
 func TestPostService_CreateWithRefs_CommentDoesNotAllowVideo(t *testing.T) {
@@ -312,7 +526,7 @@ func TestPostService_CreatePost_NotifiesMentionedUsers(t *testing.T) {
 	userRepo.On("FindByHandle", mock.Anything, "unknown_user").Return(nil, repository.ErrNotFound)
 	notifySvc.On("Notify", mock.Anything, mentioned.ID, userID, "mention", &postID).Return(nil)
 
-	svc := NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), userRepo, likeRepo, bookmarkRepo,
+	svc := NewPostService(postRepo, new(mockHashtagRepo), userRepo, likeRepo, bookmarkRepo,
 		new(mockStorageSvc), notifySvc)
 	_, err := svc.CreatePost(context.Background(), userID, content, nil)
 
@@ -338,7 +552,7 @@ func TestPostService_CreatePost_WithoutMention_DoesNotNotify(t *testing.T) {
 	postRepo.On("FindByID", mock.Anything, postID).Return(stored, nil)
 	expectStats(postRepo)
 
-	svc := NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), new(mockUserRepo), likeRepo,
+	svc := NewPostService(postRepo, new(mockHashtagRepo), new(mockUserRepo), likeRepo,
 		bookmarkRepo, new(mockStorageSvc), notifySvc)
 	_, err := svc.CreatePost(context.Background(), userID, "メンションなしの投稿", nil)
 

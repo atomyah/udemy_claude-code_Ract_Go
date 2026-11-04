@@ -49,7 +49,8 @@ export const MediaGrid = ({ media }: MediaGridProps) => {
           key={item.id}
           component="img"
           src={item.url}
-          alt=""
+          alt={`投稿画像 ${index + 1}`}
+          loading="lazy"
           sx={{
             width: '100%',
             height: count === 1 ? 'auto' : '100%',

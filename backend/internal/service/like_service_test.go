@@ -86,7 +86,7 @@ func TestNotificationService_Notify_SkipsSelfNotification(t *testing.T) {
 	postID := uuid.New()
 
 	notificationRepo := new(mockNotificationRepo)
-	svc := NewNotificationService(notificationRepo)
+	svc := NewNotificationService(notificationRepo, new(mockStorageSvc))
 
 	// 自分の投稿への操作では通知を作らない
 	err := svc.Notify(context.Background(), userID, userID, "like", &postID)
@@ -110,7 +110,7 @@ func TestNotificationService_Notify_CreatesNotification(t *testing.T) {
 			n.PostID != nil && *n.PostID == postID
 	})).Return(nil)
 
-	svc := NewNotificationService(notificationRepo)
+	svc := NewNotificationService(notificationRepo, new(mockStorageSvc))
 
 	require.NoError(t, svc.Notify(context.Background(), recipientID, actorID, "comment", &postID))
 	notificationRepo.AssertExpectations(t)
@@ -121,7 +121,7 @@ func TestNotificationService_MarkAllRead(t *testing.T) {
 	notificationRepo := new(mockNotificationRepo)
 	notificationRepo.On("MarkAllRead", mock.Anything, userID).Return(nil)
 
-	svc := NewNotificationService(notificationRepo)
+	svc := NewNotificationService(notificationRepo, new(mockStorageSvc))
 
 	require.NoError(t, svc.MarkAllRead(context.Background(), userID))
 	notificationRepo.AssertExpectations(t)

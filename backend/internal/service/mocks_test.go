@@ -231,22 +231,6 @@ func (m *mockNotificationRepo) CountUnread(ctx context.Context, userID uuid.UUID
 	return int64(args.Int(0)), args.Error(1)
 }
 
-type mockMediaRepo struct{ mock.Mock }
-
-func (m *mockMediaRepo) CreateBulk(ctx context.Context, media []model.Media) error {
-	return m.Called(ctx, media).Error(0)
-}
-
-func (m *mockMediaRepo) FindByPostID(ctx context.Context, postID uuid.UUID) ([]model.Media, error) {
-	args := m.Called(ctx, postID)
-	return args.Get(0).([]model.Media), args.Error(1)
-}
-
-func (m *mockMediaRepo) FindByPostIDs(ctx context.Context, postIDs []uuid.UUID) (map[uuid.UUID][]model.Media, error) {
-	args := m.Called(ctx, postIDs)
-	return args.Get(0).(map[uuid.UUID][]model.Media), args.Error(1)
-}
-
 type mockHashtagRepo struct{ mock.Mock }
 
 func (m *mockHashtagRepo) FindOrCreate(ctx context.Context, name string) (*model.Hashtag, error) {
@@ -366,9 +350,18 @@ func (m *mockStorageSvc) UploadImage(ctx context.Context, folder string, fh *mul
 	return args.String(0), args.Error(1)
 }
 
-func (m *mockStorageSvc) UploadPostMedia(ctx context.Context, folder string, fh *multipart.FileHeader) (string, string, error) {
-	args := m.Called(ctx, folder, fh)
+func (m *mockStorageSvc) UploadPostMedia(ctx context.Context, postID uuid.UUID, fh *multipart.FileHeader) (string, string, error) {
+	args := m.Called(ctx, postID, fh)
 	return args.String(0), args.String(1), args.Error(2)
+}
+
+func (m *mockStorageSvc) DeleteObjects(ctx context.Context, objectPaths []string) {
+	m.Called(ctx, objectPaths)
+}
+
+func (m *mockStorageSvc) SignedURL(objectPath string) (string, error) {
+	args := m.Called(objectPath)
+	return args.String(0), args.Error(1)
 }
 
 // ============================================================

@@ -57,7 +57,8 @@ CREATE TABLE posts (
 CREATE TABLE media (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     post_id    UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-    url        VARCHAR(500) NOT NULL,
+    storage_path VARCHAR(500) NOT NULL DEFAULT '', -- Storage のオブジェクトパス。表示時に署名付き URL へ変換する（URL は保存しない）
+    url        VARCHAR(500) NOT NULL DEFAULT '',   -- 公開 URL で保存していた既存行のみ。新規行は空文字
     type       VARCHAR(10) NOT NULL,  -- 'image' | 'video'
     sort_order INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()

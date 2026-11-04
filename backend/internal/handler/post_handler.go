@@ -77,15 +77,16 @@ func (h *PostHandler) GetHome(c echo.Context) error {
 
 // CreatePost godoc
 // @Summary      投稿作成
-// @Description  テキスト必須（最大280文字）、画像最大4枚、動画最大1本を投稿する。ハッシュタグ・メンションは自動解析される
+// @Description  テキスト必須（最大280文字）、画像最大4枚、動画最大1本を投稿する。ハッシュタグ・メンションは自動解析される。レスポンスのメディアURLは期限付きの署名付きURL
 // @Tags         posts
 // @Accept       multipart/form-data
 // @Produce      json
 // @Param        content  formData  string  true   "投稿本文（最大280文字）"
-// @Param        media    formData  file    false  "メディアファイル（画像JPEG/PNG/WebP最大4枚各5MB、動画MP4/MOV最大1本100MB）"
+// @Param        media    formData  file    false  "メディアファイル（画像JPEG/PNG/WebP最大4枚各5MB、動画MP4/MOV最大1本50MB）"
 // @Success      201      {object}  dto.PostResponse   "投稿成功"
 // @Failure      400      {object}  dto.ErrorResponse  "バリデーションエラー（文字数超過・ファイル形式不正など）"
 // @Failure      401      {object}  dto.ErrorResponse  "未認証"
+// @Failure      413      {object}  dto.ErrorResponse  "リクエストサイズ超過"
 // @Failure      500      {object}  dto.ErrorResponse  "サーバーエラー"
 // @Router       /posts [post]
 // @Security     BearerAuth
@@ -265,7 +266,7 @@ func (h *PostHandler) GetComments(c echo.Context) error {
 // @Produce      json
 // @Param        id       path      string  true   "コメント先の投稿ID（UUID）" example(550e8400-e29b-41d4-a716-446655440003)
 // @Param        content  formData  string  true   "コメント本文（最大280文字）"
-// @Param        media    formData  file    false  "メディアファイル（画像最大4枚 or 動画1本）"
+// @Param        media    formData  file    false  "メディアファイル（画像JPEG/PNG/WebP最大2枚各5MB）"
 // @Success      201      {object}  dto.PostResponse   "コメント投稿成功"
 // @Failure      400      {object}  dto.ErrorResponse  "バリデーションエラー"
 // @Failure      401      {object}  dto.ErrorResponse  "未認証"
@@ -319,7 +320,6 @@ func extractMediaFiles(c echo.Context) ([]*multipart.FileHeader, error) {
 
 // respondPostMediaError は投稿作成時のメディア関連エラーをHTTPレスポンスに変換する
 func respondPostMediaError(c echo.Context, err error) error {
-	c.Logger().Errorf("post media error detail: %v", err)
 	switch {
 	case errors.Is(err, service.ErrTooManyMedia):
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: "VALIDATION_ERROR", Message: "メディアファイルの枚数上限を超えています"})

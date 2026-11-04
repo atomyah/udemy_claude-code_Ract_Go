@@ -10,6 +10,9 @@ frontend/dist/
 frontend/src/api/generated/
 frontend/playwright/.auth/
 
+# Firebase CLI のデプロイキャッシュ
+frontend/.firebase/
+
 # Firebase 認証情報
 *.serviceAccountKey.json
 firebase-credentials.json

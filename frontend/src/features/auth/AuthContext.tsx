@@ -21,9 +21,14 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   /** ログインAPI以外（Google ログインなど）でセッションを開始したときにユーザー情報を反映する */
   loginWithUser: (user: UserResponse) => void;
-  register: (payload: RegisterRequest) => Promise<void>;
+  /** 新規登録する。管理者の承認待ちのときはログイン状態にせず pendingApproval: true を返す */
+  register: (payload: RegisterRequest) => Promise<RegisterResult>;
   logout: () => Promise<void>;
   updateCurrentUser: (user: UserResponse) => void;
+}
+
+export interface RegisterResult {
+  pendingApproval: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -74,9 +79,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setCurrentUser(user);
   }, []);
 
-  const register = useCallback(async (payload: RegisterRequest) => {
-    const { user } = await registerRequest(payload);
+  const register = useCallback(async (payload: RegisterRequest): Promise<RegisterResult> => {
+    const { user, pending_approval } = await registerRequest(payload);
+    // 承認待ちのときはバックエンドが Cookie を発行しないため、ログイン状態にしない
+    if (pending_approval) {
+      return { pendingApproval: true };
+    }
     setCurrentUser(user ?? null);
+    return { pendingApproval: false };
   }, []);
 
   const logout = useCallback(async () => {

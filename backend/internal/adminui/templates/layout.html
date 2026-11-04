@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{.Title}} | SNS 管理画面</title>
+  <link rel="stylesheet" href="/admin/static/admin.css">
+</head>
+<body>
+{{if .Admin}}
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">SNS 管理画面</div>
+    <nav>
+      <a href="/admin" class="{{if eq .Active "dashboard"}}active{{end}}">ダッシュボード</a>
+      <a href="/admin/users" class="{{if eq .Active "users"}}active{{end}}">ユーザー</a>
+      <a href="/admin/password-resets" class="{{if eq .Active "password_resets"}}active{{end}}">パスワードリセット申請</a>
+      <a href="/admin/admins" class="{{if eq .Active "admins"}}active{{end}}">管理者ユーザー</a>
+    </nav>
+    <div class="who">
+      {{.Admin.Username}}（{{if .Admin.IsRoot}}ルート管理者{{else}}管理者{{end}}）
+      <form method="post" action="/admin/logout">
+        <input type="hidden" name="_csrf" value="{{.CSRF}}">
+        <button type="submit" class="btn link">ログアウト</button>
+      </form>
+    </div>
+  </aside>
+  <main>
+    {{with .Flash}}<div class="flash {{.Kind}}" role="status">{{.Message}}</div>{{end}}
+    {{template "content" .}}
+  </main>
+</div>
+{{else}}
+{{template "content" .}}
+{{end}}
+</body>
+</html>

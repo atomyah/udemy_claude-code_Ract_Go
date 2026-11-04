@@ -34,14 +34,15 @@ func AdminOnly(users UserFinder) echo.MiddlewareFunc {
 				return forbidden(c)
 			}
 
-			user, err := users.FindByID(c.Request().Context(), userID)
+			// JWTAuth で取得済みのユーザーを使う（なければ DB から取得）
+			user, err := loadAuthUser(c, users, userID)
 			if errors.Is(err, repository.ErrNotFound) {
 				return forbidden(c)
 			}
 			if err != nil {
 				return httperr.Internal(c, httperr.DefaultInternalMessage, err)
 			}
-			if user.Role != "admin" || user.IsSuspended {
+			if user.Role != "admin" || user.IsSuspended || !user.IsApproved() {
 				return forbidden(c)
 			}
 			return next(c)

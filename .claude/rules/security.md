@@ -79,7 +79,8 @@ e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 
 - ファイルの MIME タイプをサーバーサイドで検証する（`Content-Type` ヘッダーだけでなく実際のバイト列でも確認）。
 - 許可する形式: 画像（JPEG / PNG / WebP）、動画（MP4 / MOV）のみ。
-- サイズ制限: 画像 5MB、動画 100MB。Echo のリクエストサイズ制限ミドルウェアで上限を設ける。
+- サイズ制限: 画像 5MB、動画 50MB。Echo のリクエストサイズ制限ミドルウェアで上限を設ける。
+- 投稿メディアは非公開オブジェクトとして保存し、バックエンドが発行する V4 署名付き URL で配信する。Storage の Security Rules は全拒否のままにする。
 - アップロードファイルを直接サーバーのファイルシステムに保存しない（Firebase Storage に転送する）。
 
 ---
@@ -87,7 +88,9 @@ e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 ## 機密情報管理
 
 - JWT シークレット・DB パスワード・Firebase サービスアカウントは全て環境変数で管理する。
-- シークレット値は 32 バイト以上のランダム文字列を使う。
+- シークレット値は 32 文字以上のランダム文字列を使う（`openssl rand -base64 48`）。`JWT_SECRET` / `JWT_REFRESH_SECRET` は起動時に `config.ValidateSecrets` で「未設定・32 文字未満・見本（change-me）のまま・同じ値」を拒否する。
+- `.env.example` には実値や推測しやすい既定値を書かない（パスワードは `CHANGE_ME`、署名鍵は空欄）。
+- DB・DB 管理 UI（Adminer）のポートは `127.0.0.1` にだけバインドし、LAN に公開しない。Adminer は profile `tools` で必要なときだけ起動する。
 - ログに機密情報（パスワード・トークン・メールアドレス）を出力しない。
 - エラーレスポンスに内部スタックトレースを含めない（本番環境）。
 

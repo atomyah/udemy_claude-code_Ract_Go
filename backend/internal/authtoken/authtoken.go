@@ -96,3 +96,14 @@ func HashRefreshToken(secret, token string) string {
 	mac.Write([]byte(token))
 	return hex.EncodeToString(mac.Sum(nil))
 }
+
+// NewPasswordResetToken はパスワードリセットリンクに埋め込むトークン（256 ビットの乱数）を生成する
+func NewPasswordResetToken() (string, error) {
+	return NewRefreshToken()
+}
+
+// HashPasswordResetToken はパスワードリセットトークンの DB 保存用ハッシュを返す。
+// リフレッシュトークンと同じ鍵を使うため、用途を表す接頭辞を付けてハッシュを区別する
+func HashPasswordResetToken(secret, token string) string {
+	return HashRefreshToken(secret, "password-reset:"+token)
+}

@@ -9,12 +9,13 @@ import { AuthProvider, useAuth } from './AuthContext';
 const getMeMock = vi.fn();
 const loginMock = vi.fn();
 const logoutMock = vi.fn();
+const registerMock = vi.fn();
 
 vi.mock('./api', () => ({
   getMe: () => getMeMock(),
   login: (payload: unknown) => loginMock(payload),
   logout: () => logoutMock(),
-  register: vi.fn(),
+  register: (payload: unknown) => registerMock(payload),
 }));
 
 // client.ts に登録されたセッション切れハンドラーを取り出して、テストから呼べるようにする
@@ -42,6 +43,7 @@ describe('AuthContext', () => {
     getMeMock.mockReset();
     loginMock.mockReset();
     logoutMock.mockReset();
+    registerMock.mockReset();
     sessionExpiredHandler = null;
     localStorage.clear();
   });
@@ -138,5 +140,46 @@ describe('AuthContext', () => {
     });
 
     expect(result.current.location.pathname).toBe('/bookmarks');
+  });
+
+  test('登録後に承認待ちのときはログイン状態にならず pendingApproval が返る', async () => {
+    getMeMock.mockRejectedValue(new Error('unauthorized'));
+    registerMock.mockResolvedValue({ user, pending_approval: true });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let registerResult: { pendingApproval: boolean } | undefined;
+    await act(async () => {
+      registerResult = await result.current.register({
+        email: 'taro@example.com',
+        password: 'password123',
+        handle: 'taro',
+        display_name: 'タロウ',
+      });
+    });
+
+    expect(registerResult).toEqual({ pendingApproval: true });
+    expect(result.current.isAuthenticated).toBe(false);
+  });
+
+  test('登録後に承認済み（自動承認）のときはログイン状態になる', async () => {
+    getMeMock.mockRejectedValue(new Error('unauthorized'));
+    registerMock.mockResolvedValue({ user });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.register({
+        email: 'taro@example.com',
+        password: 'password123',
+        handle: 'taro',
+        display_name: 'タロウ',
+      });
+    });
+
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.currentUser).toEqual(user);
   });
 });

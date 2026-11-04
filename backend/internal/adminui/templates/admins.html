@@ -1,0 +1,55 @@
+{{define "content"}}
+<h1>管理者ユーザー</h1>
+
+<div class="card">
+  <h2>ルート管理者</h2>
+  <p class="muted">
+    環境変数（ADMIN_ROOT_USERNAME / ADMIN_ROOT_PASSWORD）で設定する管理者です。admins テーブルには保存されず、
+    管理者ユーザーの作成はルート管理者だけが行えます。
+  </p>
+</div>
+
+{{if .Admin.IsRoot}}
+<div class="card">
+  <h2>管理者ユーザーを作成</h2>
+  <form method="post" action="/admin/admins" class="stack">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <label>ユーザー名
+      <input type="text" name="username" value="{{.Data.Username}}" required minlength="3" maxlength="50" pattern="[A-Za-z0-9_.\-]{3,50}" autocomplete="off">
+      <span class="hint">3〜50 文字の英数字・アンダースコア・ドット・ハイフン</span>
+    </label>
+    <label>初期パスワード
+      <input type="password" name="password" required minlength="12" maxlength="72" autocomplete="new-password">
+      <span class="hint">12 文字以上。作成後、本人に安全な方法で伝えてください</span>
+    </label>
+    <button type="submit" class="btn primary">作成する</button>
+  </form>
+</div>
+{{end}}
+
+<h2>登録済みの管理者ユーザー</h2>
+{{if .Data.Admins}}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>ユーザー名</th><th>権限</th><th>状態</th><th>作成者</th><th>作成日時</th><th>最終ログイン</th></tr></thead>
+    <tbody>
+    {{range .Data.Admins}}
+      <tr>
+        <td>{{.Username}}</td>
+        <td>{{.Role}}</td>
+        <td>{{if .IsActive}}<span class="badge approved">有効</span>{{else}}<span class="badge rejected">無効</span>{{end}}</td>
+        <td>{{.CreatedBy}}</td>
+        <td>{{formatTime .CreatedAt}}</td>
+        <td>{{formatTime .LastLoginAt}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{if .Data.NextCursor}}
+<div class="pager"><a class="btn" href="/admin/admins?cursor={{.Data.NextCursor}}">次の 20 件</a></div>
+{{end}}
+{{else}}
+<div class="card"><p class="muted">管理者ユーザーはまだいません。</p></div>
+{{end}}
+{{end}}

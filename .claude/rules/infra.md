@@ -1,5 +1,7 @@
 # インフラ・デプロイ規約
 
+> 本番デプロイの実際の手順・環境変数一覧は `docs/deploy.md` が正。バックエンドの本番イメージは `backend/Dockerfile.prod`（Cloud Run の継続デプロイで使用）、フロントエンドは `make deploy-frontend`。
+
 ## ローカル開発環境
 
 ### Docker / docker-compose 構成

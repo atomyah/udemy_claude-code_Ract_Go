@@ -37,11 +37,14 @@
 
 ## メディアアップロードサービス（`internal/service/storage_service.go` に追加）
 
-- [x] `UploadPostMedia(ctx, file, postID, index) (url, type string, error)`
+- [x] `UploadPostMedia(ctx, postID, file) (objectPath, type string, error)`— 非公開オブジェクトとして `posts/{post_id}/{uuid}{拡張子}` に保存（設計は README「画像付き投稿」）
   - 画像: JPEG / PNG / WebP、最大 5MB
-  - 動画: MP4 / MOV、最大 100MB
-  - ファイル種別の自動判定（Content-Type）
-- [x] 1 投稿あたり画像 4 枚 or 動画 1 本のバリデーション（`validateMediaFiles`）
+  - 動画: MP4 / MOV、最大 50MB
+  - ファイル種別の判定は実際のバイト列で行う
+- [x] 1 投稿あたり画像 4 枚 or 動画 1 本・サイズ上限のバリデーション（`validateMediaFiles`。アップロード前に全ファイルを検証）
+- [x] `SignedURL(objectPath)`— V4 署名付きURLの発行。DB には `media.storage_path` だけを保存し、API レスポンス組み立て時に署名する
+- [ ] 投稿編集時の画像差し替え（対象外）
+- [ ] 投稿削除時の Storage オブジェクト削除（対象外。論理削除のため画像は残る）
 
 ## ハッシュタグ抽出ユーティリティ（`internal/utils/hashtag.go`）
 

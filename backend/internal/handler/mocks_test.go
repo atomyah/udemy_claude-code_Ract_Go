@@ -221,9 +221,18 @@ func (m *mockStorageSvc) UploadImage(ctx context.Context, folder string, fh *mul
 	return args.String(0), args.Error(1)
 }
 
-func (m *mockStorageSvc) UploadPostMedia(ctx context.Context, folder string, fh *multipart.FileHeader) (string, string, error) {
-	args := m.Called(ctx, folder, fh)
+func (m *mockStorageSvc) UploadPostMedia(ctx context.Context, postID uuid.UUID, fh *multipart.FileHeader) (string, string, error) {
+	args := m.Called(ctx, postID, fh)
 	return args.String(0), args.String(1), args.Error(2)
+}
+
+func (m *mockStorageSvc) DeleteObjects(ctx context.Context, objectPaths []string) {
+	m.Called(ctx, objectPaths)
+}
+
+func (m *mockStorageSvc) SignedURL(objectPath string) (string, error) {
+	args := m.Called(objectPath)
+	return args.String(0), args.Error(1)
 }
 
 type mockUserRepo struct{ mock.Mock }

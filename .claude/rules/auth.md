@@ -28,6 +28,7 @@
 - ログアウト（`POST /auth/logout`）は系列を失効させ、Cookie を削除する。
 - 全デバイスログアウト（`POST /auth/revoke-all`、要認証）はユーザーの全リフレッシュトークンを失効させる。他端末は Access Token の期限（最長 1 時間）でログアウトされる。
 - 管理者がユーザーを停止したときも、そのユーザーの全リフレッシュトークンを失効させる。
+- 発行済みのアクセストークンを止めるため、`JWTAuth` / `OptionalJWTAuth` は毎リクエスト DB でユーザーを確認する。停止中は `JWTAuth` が 401 `ACCOUNT_SUSPENDED`、`OptionalJWTAuth` は未ログイン扱い。削除済みユーザーは `INVALID_TOKEN`。取得したユーザーは Context に保存し、`AdminOnly` も使い回す（DB 参照は 1 リクエスト 1 回）。
 
 ---
 
@@ -64,6 +65,17 @@ if !ok {
 | 権限不足 | 403 | `FORBIDDEN` |
 | 許可されていない Origin | 403 | `INVALID_ORIGIN` |
 
+### 登録審査（users.status）
+
+- 新規登録ユーザーは `pending`。管理画面で管理者が承認（`approved`）するまでログインできない（登録時は Cookie を発行せず `pending_approval: true` を返す）。
+- ログイン・Google ログインで `pending` は 403 `ACCOUNT_PENDING`、`rejected` は 403 `ACCOUNT_REJECTED`（パスワードが正しいときだけ伝える）。`JWTAuth` は 401 `ACCOUNT_NOT_APPROVED`、`OptionalJWTAuth` は未ログイン扱い、リフレッシュも拒否する。
+- `AUTO_APPROVE_USERS=true` は `ENV=test` のときだけ有効（E2E 用）。それ以外の環境では必ず `pending`。
+
+### 管理画面の認証
+
+- 一般ユーザーの JWT とは別の `admin_session` Cookie（HS256・8 時間・`SameSite=Strict; Path=/admin`、署名鍵 `ADMIN_SESSION_SECRET`）。
+- `/admin` 配下はログインページ以外すべて `AdminSession` ミドルウェアを通し、POST は CSRF トークン（`_csrf`）を検証する。詳細は `docs/admin-panel.md`。
+
 ### パスワード
 
 - `bcrypt` でハッシュ化する（コスト係数: 12）。
@@ -76,6 +88,7 @@ if !ok {
 
 - フロントエンドは `signInWithPopup` で ID Token を取得する。
 - ID Token はバックエンドの `POST /api/v1/auth/google` に送り、バックエンドで Firebase Admin SDK を使って検証する。検証後は通常のログインと同じく Cookie でトークンを返す。
+- メールアドレスで既存アカウントに結び付けるため、`firebase.sign_in_provider` が `google.com` かつ `email_verified` が `true` のトークンだけを受け付ける（それ以外は 401 `INVALID_TOKEN`）。
 - フロントエンドから Firebase Storage や Firestore に直接アクセスしない（Storage のみ許可、Admin SDK 経由）。
 - サービスアカウントの JSON は環境変数 `FIREBASE_CREDENTIALS_JSON` で管理し、ファイルとしてコミットしない。
 

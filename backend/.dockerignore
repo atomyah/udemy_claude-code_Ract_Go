@@ -1,0 +1,10 @@
+# イメージに秘密情報・不要ファイルを含めない（Dockerfile.prod のビルドコンテキスト）
+.env
+.env.*
+*firebase-adminsdk*.json
+*.serviceAccountKey.json
+tmp/
+tmp_test/
+coverage.out
+coverage.html
+*.log

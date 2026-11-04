@@ -7,6 +7,7 @@ import { ToastProvider } from './components/ToastProvider';
 import AdminPage from './pages/AdminPage';
 import BookmarksPage from './pages/BookmarksPage';
 import ExplorePage from './pages/ExplorePage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import HashtagPage from './pages/HashtagPage';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -14,6 +15,7 @@ import NotFoundPage from './pages/NotFoundPage';
 import NotificationsPage from './pages/NotificationsPage';
 import PostDetailPage from './pages/PostDetailPage';
 import ProfilePage from './pages/ProfilePage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import SettingsPage from './pages/SettingsPage';
 import SignupPage from './pages/SignupPage';
 import { darkTheme, lightTheme } from './theme';
@@ -30,6 +32,8 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
           <Route element={<AppLayout />}>
             <Route element={<PrivateRoute />}>

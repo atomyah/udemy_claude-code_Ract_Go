@@ -31,6 +31,8 @@ interface SignupFormValues {
 
 const SignupPage = () => {
   const [showPassword, setShowPassword] = useState(false);
+  // 登録後に管理者の承認待ちになった場合は、ホームへ遷移せず案内を表示する
+  const [pendingApproval, setPendingApproval] = useState(false);
   const navigate = useNavigate();
   const { mutate: registerUser, isPending, error } = useRegister();
   const { mutate: googleLogin, isPending: isGooglePending, error: googleError } = useGoogleLogin();
@@ -56,9 +58,40 @@ const SignupPage = () => {
         handle: values.handle,
         password: values.password,
       },
-      { onSuccess: () => navigate('/', { replace: true }) },
+      {
+        onSuccess: (result) => {
+          if (result.pendingApproval) {
+            setPendingApproval(true);
+            return;
+          }
+          navigate('/', { replace: true });
+        },
+      },
     );
   };
+
+  if (pendingApproval) {
+    return (
+      <Box
+        data-testid="signup-pending"
+        sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', p: 2 }}
+      >
+        <Card sx={{ width: '100%', maxWidth: 420 }}>
+          <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography variant="h5" sx={{ fontWeight: 700 }}>
+              登録を受け付けました
+            </Typography>
+            <Alert severity="info">
+              現在、運営によるアカウントの承認待ちです。承認されると登録したメールアドレスにご連絡しますので、その後ログインしてください。
+            </Alert>
+            <Button component={RouterLink} to="/login" variant="outlined">
+              ログイン画面へ
+            </Button>
+          </CardContent>
+        </Card>
+      </Box>
+    );
+  }
 
   return (
     <Box

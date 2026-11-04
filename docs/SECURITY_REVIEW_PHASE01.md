@@ -40,6 +40,24 @@
 
 **Critical 2 件・High 4 件**。とくに P01-01 と P01-02 は「すでに危険」ではなく「次の `git add -A && git commit` で不可逆的に危険になる」種類のため、最優先で対処すべき。
 
+### 対応状況（2026-10-11 再確認）
+
+| ID | 状況 | 内容 |
+|----|------|------|
+| P01-01 | 対応済み | `backend/.env` は `.gitignore` 済み。Git 履歴にも含まれない |
+| P01-02 | 対応済み | `.mcp.json` は追跡対象外・`.gitignore` 済み（履歴上の版は `env: {}` のみ） |
+| P01-03 | **2026-10-11 修正** | Adminer を `profiles: ["tools"]` 化（既定で起動しない）・`127.0.0.1:8082` のみ・`adminer:4.17.1-standalone` に固定 |
+| P01-04 | **2026-10-11 修正** | `db`（5432）・`db_test`（5433）を `127.0.0.1` にバインド。`.env.example` のパスワードを `CHANGE_ME` に。`db` は `backend/.env` の `POSTGRES_*` で初期化（API の `DATABASE_URL` と同じファイルで管理） |
+| P01-05 | 対応済み | `AuthRateLimit`（認証系 5 回/分・IP 単位）・`GeneralRateLimit`（60 回/分） |
+| P01-06 | **2026-10-11 修正** | `config.ValidateSecrets` で未設定・32 文字未満・見本の値（change-me）・同一値を起動時に拒否。`.env.example` は空欄＋生成コマンド。開発用 `backend/.env` の鍵を `openssl rand -base64 48` で再生成 |
+| P01-07 〜 P01-12 | 未対応 | Medium。別途対応 |
+| P01-13 | 一部対応 | カンマ区切り対応済み。本番での `*` 起動拒否は未対応 |
+| P01-14 | 対応済み | アクセスログは `path` のみ（クエリ文字列を含まない） |
+| P01-15 | 対応済み | `.playwright-mcp/` は `.gitignore` 済み |
+| P01-16 / P01-17 | 未対応 | Low / Info |
+| 付録B: 停止ユーザー | **2026-10-11 修正** | `JWTAuth` / `OptionalJWTAuth` が毎リクエスト DB で `is_suspended` を確認（停止中は 401 `ACCOUNT_SUSPENDED`）。発行済みアクセストークン（最長 1 時間）も即時に無効 |
+| 付録B: その他 | 対応済み | ロールは DB で判定・`err.Error()` を返さない・本番で SQL をログに出さない・テスト整備済み。`listbuckets_main.go` は残存 |
+
 ---
 
 ## 2. 詳細

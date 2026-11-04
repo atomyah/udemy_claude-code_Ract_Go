@@ -1,5 +1,14 @@
 import { api } from '../../api/client';
-import type { AuthResponse, GoogleLoginRequest, LoginRequest, RegisterRequest, UserResponse } from '../../api/types';
+import type {
+  AuthResponse,
+  GoogleLoginRequest,
+  LoginRequest,
+  PasswordResetRequest,
+  PasswordResetRequestRequest,
+  RegisterRequest,
+  SuccessResponse,
+  UserResponse,
+} from '../../api/types';
 
 export const login = (payload: LoginRequest): Promise<AuthResponse> =>
   api.post<AuthResponse>('/auth/login', payload).then((res) => res.data);
@@ -9,6 +18,14 @@ export const loginWithGoogle = (payload: GoogleLoginRequest): Promise<AuthRespon
 
 export const register = (payload: RegisterRequest): Promise<AuthResponse> =>
   api.post<AuthResponse>('/auth/register', payload).then((res) => res.data);
+
+/** パスワードリセットを申請する（登録の有無にかかわらず同じ応答が返る） */
+export const requestPasswordReset = (payload: PasswordResetRequestRequest): Promise<SuccessResponse> =>
+  api.post<SuccessResponse>('/auth/password-reset-requests', payload).then((res) => res.data);
+
+/** 運営から届いたリセットリンクのトークンで新しいパスワードを設定する */
+export const resetPassword = (payload: PasswordResetRequest): Promise<SuccessResponse> =>
+  api.post<SuccessResponse>('/auth/password-reset', payload).then((res) => res.data);
 
 export const logout = (): Promise<void> => api.post('/auth/logout').then(() => undefined);
 

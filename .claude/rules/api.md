@@ -75,6 +75,16 @@ GET    /api/v1/notifications       通知一覧（要認証）
 PUT    /api/v1/notifications/read  全通知を既読にする（要認証）
 ```
 
+#### パスワードリセット（認証不要・認証系レート制限）
+```
+POST   /api/v1/auth/password-reset-requests  パスワードリセット申請（常に 202。登録の有無を返さない）
+POST   /api/v1/auth/password-reset           リセットリンクのトークンでパスワード再設定
+```
+
+#### 管理画面（運営者向け・HTML。API ではないため Swagger 対象外）
+- `/admin` 配下（`html/template`）。一般ユーザーとは別の管理者アカウント（ルート管理者・`admins`）でログインする。
+- URL 一覧は `docs/admin-panel.md`。ルートを追加したらアクセスログ用の操作名を `handler.AdminPanelActions` にも追加する。
+
 #### 管理者（要 admin ロール）
 ```
 DELETE /api/v1/admin/posts/:id             投稿強制削除
@@ -178,8 +188,9 @@ media[]: <file2>
 
 - `media[]` は最大 4 ファイル（画像）または 1 ファイル（動画）。
 - 画像: JPEG / PNG / WebP、1 枚 5MB 以内。
-- 動画: MP4 / MOV、100MB 以内、2 分 20 秒以内。
-- バリデーションはバックエンドで行い、400 エラーを返す。
+- 動画: MP4 / MOV、50MB 以内、2 分 20 秒以内。
+- バリデーションはバックエンドで行い、400 エラーを返す。リクエスト全体の上限（`BodyLimit`）超過は 413。
+- レスポンスの `media[].url` は期限付きの署名付き URL。クライアントは保存せず表示にだけ使う。
 
 ---
 

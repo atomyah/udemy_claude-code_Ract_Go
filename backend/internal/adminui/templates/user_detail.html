@@ -1,0 +1,67 @@
+{{define "content"}}
+{{$u := .Data.User}}
+<p><a href="/admin/users">← ユーザー一覧へ</a></p>
+<h1>@{{$u.Handle}} の詳細</h1>
+
+<div class="card">
+  <dl class="detail">
+    <dt>ユーザーID</dt><dd>{{$u.ID}}</dd>
+    <dt>表示名</dt><dd>{{$u.DisplayName}}</dd>
+    <dt>メールアドレス</dt><dd>{{$u.Email}}</dd>
+    <dt>審査ステータス</dt><dd><span class="badge {{$u.Status}}">{{userStatusLabel $u.Status}}</span></dd>
+    <dt>審査日時</dt><dd>{{formatTime $u.ReviewedAt}}</dd>
+    <dt>審査した管理者</dt><dd>{{deref $u.ReviewedBy}}</dd>
+    <dt>アカウント停止</dt><dd>{{if $u.IsSuspended}}<span class="badge suspended">停止中</span>{{else}}なし{{end}}</dd>
+    <dt>ロール</dt><dd>{{$u.Role}}</dd>
+    <dt>ログイン方法</dt><dd>{{if $u.PasswordHash}}メール + パスワード{{else}}Google のみ（パスワード未設定）{{end}}</dd>
+    <dt>自己紹介</dt><dd>{{deref $u.Bio}}</dd>
+    <dt>投稿数</dt><dd>{{.Data.PostCount}}</dd>
+    <dt>登録日時</dt><dd>{{formatTime $u.CreatedAt}}</dd>
+    <dt>更新日時</dt><dd>{{formatTime $u.UpdatedAt}}</dd>
+  </dl>
+</div>
+
+<div class="card">
+  <h2>審査</h2>
+  <div class="actions">
+    {{if ne $u.Status "approved"}}
+    <form method="post" action="/admin/users/{{$u.ID}}/approve" class="inline">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <button type="submit" class="btn primary">承認する</button>
+    </form>
+    {{end}}
+    {{if eq $u.Status "pending"}}
+    <form method="post" action="/admin/users/{{$u.ID}}/reject" class="inline">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <button type="submit" class="btn danger">拒否する</button>
+    </form>
+    {{end}}
+    {{if eq $u.Status "approved"}}<span class="muted">承認済みです。利用を止める場合は SNS アプリの管理者機能でアカウントを停止してください。</span>{{end}}
+  </div>
+  <p class="hint">承認・拒否してもユーザーへのメールは自動送信されません。運営から手動で連絡してください。</p>
+</div>
+
+<div class="card">
+  <h2>パスワードリセット申請（最新 10 件）</h2>
+  {{if .Data.ResetRequests}}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>申請日時</th><th>ステータス</th><th>対応者</th><th>対応日時</th></tr></thead>
+      <tbody>
+      {{range .Data.ResetRequests}}
+        <tr>
+          <td>{{formatTime .CreatedAt}}</td>
+          <td><span class="badge {{.Status}}">{{resetStatusLabel .Status}}</span></td>
+          <td>{{deref .HandledBy}}</td>
+          <td>{{formatTime .HandledAt}}</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  <p class="hint"><a href="/admin/password-resets">パスワードリセット申請一覧</a>からリンクを発行できます。</p>
+  {{else}}
+  <p class="muted">申請はありません。</p>
+  {{end}}
+</div>
+{{end}}

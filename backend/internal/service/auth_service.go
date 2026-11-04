@@ -9,6 +9,7 @@ import (
 	"time"
 
 	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/auth"
 	"github.com/atyahara/sns-backend/internal/authtoken"
 	"github.com/atyahara/sns-backend/internal/config"
 	"github.com/atyahara/sns-backend/internal/dto"
@@ -23,9 +24,13 @@ var (
 	ErrEmailTaken         = errors.New("email already taken")
 	ErrHandleTaken        = errors.New("handle already taken")
 	ErrAccountSuspended   = errors.New("account suspended")
-	ErrExpiredToken       = errors.New("token expired")
-	ErrInvalidToken       = errors.New("invalid token")
-	ErrRevokedToken       = errors.New("token revoked")
+	// ErrAccountPending は管理者の承認待ち（pending）のユーザーを表す
+	ErrAccountPending = errors.New("account pending approval")
+	// ErrAccountRejected は管理者に登録を拒否された（rejected）ユーザーを表す
+	ErrAccountRejected = errors.New("account rejected")
+	ErrExpiredToken    = errors.New("token expired")
+	ErrInvalidToken    = errors.New("invalid token")
+	ErrRevokedToken    = errors.New("token revoked")
 	// ErrTokenReused は使用済みリフレッシュトークンの再利用（漏洩の兆候）を表す
 	ErrTokenReused     = errors.New("refresh token reused")
 	ErrInvalidIDToken  = errors.New("invalid firebase id token")
@@ -45,6 +50,8 @@ type AuthResult struct {
 	AccessToken  string
 	RefreshToken string
 	User         dto.UserResponse
+	// PendingApproval は登録直後で管理者の承認待ちのとき true。このときトークンは発行しない（空文字）
+	PendingApproval bool
 }
 
 type AuthService interface {
@@ -66,6 +73,9 @@ type authService struct {
 	fbApp            *firebase.App
 	now              func() time.Time
 }
+
+// googleSignInProvider は Google でサインインした Firebase ID トークンの sign_in_provider
+const googleSignInProvider = "google.com"
 
 func NewAuthService(cfg *config.Config, userRepo repository.UserRepository, refreshTokenRepo repository.RefreshTokenRepository, fbApp *firebase.App) AuthService {
 	return &authService{cfg: cfg, userRepo: userRepo, refreshTokenRepo: refreshTokenRepo, fbApp: fbApp, now: time.Now}
@@ -105,12 +115,17 @@ func (s *authService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		DisplayName:  req.DisplayName,
 		Theme:        "light",
 		Role:         "user",
+		Status:       s.initialStatus(),
 	}
 
 	if err = s.userRepo.Create(ctx, user); err != nil {
 		return nil, err
 	}
 
+	// 承認待ちのユーザーにはトークンを発行しない（管理者が承認したあとにログインしてもらう）
+	if !user.IsApproved() {
+		return &AuthResult{User: toSelfUserResponse(user), PendingApproval: true}, nil
+	}
 	return s.buildAuthResult(ctx, user)
 }
 
@@ -133,6 +148,11 @@ func (s *authService) Login(ctx context.Context, req *dto.LoginRequest) (*AuthRe
 
 	if err = bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(req.Password)); err != nil {
 		return nil, ErrInvalidCredentials
+	}
+
+	// 審査状態はパスワードが正しいときだけ伝える（第三者にアカウントの状態を知られないようにする）
+	if err := statusError(user); err != nil {
+		return nil, err
 	}
 
 	return s.buildAuthResult(ctx, user)
@@ -173,11 +193,14 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*AuthRe
 	if err != nil {
 		return nil, err
 	}
-	if user.IsSuspended {
+	if user.IsSuspended || !user.IsApproved() {
 		if err := s.refreshTokenRepo.RevokeAllByUser(ctx, user.ID, now); err != nil {
 			return nil, err
 		}
-		return nil, ErrAccountSuspended
+		if user.IsSuspended {
+			return nil, ErrAccountSuspended
+		}
+		return nil, statusError(user)
 	}
 
 	next, raw, err := s.newRefreshTokenRecord(user.ID, stored.FamilyID, now)
@@ -232,9 +255,9 @@ func (s *authService) LoginWithGoogle(ctx context.Context, idToken string) (*Aut
 		return nil, ErrInvalidIDToken
 	}
 
-	email, _ := token.Claims["email"].(string)
-	if email == "" {
-		return nil, ErrInvalidIDToken
+	email, err := verifiedGoogleEmail(token)
+	if err != nil {
+		return nil, err
 	}
 	name, _ := token.Claims["name"].(string)
 	picture, _ := token.Claims["picture"].(string)
@@ -259,6 +282,7 @@ func (s *authService) LoginWithGoogle(ctx context.Context, idToken string) (*Aut
 			DisplayName: name,
 			Theme:       "light",
 			Role:        "user",
+			Status:      s.initialStatus(),
 		}
 		if picture != "" {
 			newUser.AvatarURL = &picture
@@ -273,8 +297,50 @@ func (s *authService) LoginWithGoogle(ctx context.Context, idToken string) (*Aut
 	if user.IsSuspended {
 		return nil, ErrAccountSuspended
 	}
+	if err := statusError(user); err != nil {
+		return nil, err
+	}
 
 	return s.buildAuthResult(ctx, user)
+}
+
+// verifiedGoogleEmail は Google でサインインした確認済みのメールアドレスを ID トークンから取り出す。
+// 同じ Firebase プロジェクトのトークンでも、メール/パスワードなど他のプロバイダーや未確認のアドレスは受け付けない。
+// メールアドレスで既存アカウントに結び付けるため、受け付けると他人のアドレスで未確認の Firebase アカウントを作って
+// そのユーザーとしてログインできてしまう
+func verifiedGoogleEmail(token *auth.Token) (string, error) {
+	if token.Firebase.SignInProvider != googleSignInProvider {
+		return "", ErrInvalidIDToken
+	}
+	if verified, _ := token.Claims["email_verified"].(bool); !verified {
+		return "", ErrInvalidIDToken
+	}
+	email, _ := token.Claims["email"].(string)
+	if email == "" {
+		return "", ErrInvalidIDToken
+	}
+	return email, nil
+}
+
+// initialStatus は新規登録ユーザーの審査ステータスを返す。
+// 通常は管理者の承認待ち（pending）。E2E テスト環境（ENV=test かつ AUTO_APPROVE_USERS=true）だけ approved にする
+func (s *authService) initialStatus() string {
+	if s.cfg.AutoApproveUsers && s.cfg.IsTest() {
+		return model.UserStatusApproved
+	}
+	return model.UserStatusPending
+}
+
+// statusError は承認済みでないユーザーのエラーを返す（承認済みなら nil）
+func statusError(user *model.User) error {
+	switch user.Status {
+	case model.UserStatusApproved:
+		return nil
+	case model.UserStatusRejected:
+		return ErrAccountRejected
+	default:
+		return ErrAccountPending
+	}
 }
 
 // generateUniqueHandle はメールアドレスのローカル部から未使用のハンドルを生成する
@@ -349,6 +415,8 @@ func toSelfUserResponse(u *model.User) dto.UserResponse {
 	resp := ToUserResponse(u)
 	role := u.Role
 	resp.Role = &role
+	status := u.Status
+	resp.Status = &status
 	return resp
 }
 

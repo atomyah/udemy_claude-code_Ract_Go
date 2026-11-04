@@ -18,7 +18,7 @@
 |---|------|------|-----------|--------|
 | 1-1 | 性能 | レスポンスタイム（一覧 500ms 以内） | 部分的 | Medium |
 | 1-2 | 性能 | N+1 クエリを発生させない | 達成（2026-10-11 対応） | — |
-| 1-3 | 性能 | アップロード制限（ミドルウェアで画像 5MB / 動画 50MB） | **未達成** | **High** |
+| 1-3 | 性能 | アップロード制限（ミドルウェアで画像 5MB / 動画 50MB） | 部分的（2026-11-04 投稿系のみ対応） | **High** |
 | 1-4 | 性能 | ページネーション（全件取得禁止・20 件単位） | 達成 | — |
 | 1-5 | 性能 | タイムアウト（API 30 秒 / DB 接続 5 秒） | **未達成** | Medium |
 | 2-1 | 運用・保守 | 構造化ログ（JSON） | 達成（2026-10-11 対応） | — |
@@ -30,7 +30,7 @@
 | 3-4 | セキュリティ | レートリミット（認証 5 回/分・一般 60 回/分） | 達成 | — |
 | 3-5 | セキュリティ | security-review の定期実施 | 部分的 | Low |
 
-集計: **達成 8 / 部分的 3 / 未達成 2**（初回診断時は 達成 3 / 部分的 5 / 未達成 5）
+集計: **達成 8 / 部分的 4 / 未達成 1**（初回診断時は 達成 3 / 部分的 5 / 未達成 5）
 
 ### 既存ルールとの矛盾（要判断）
 
@@ -40,7 +40,6 @@
 |-----------|-----------|---------|
 | Access Token も HttpOnly Cookie で管理、1 時間 | Access Token は `localStorage`、15 分。「Access Token を Cookie に保存しない」と明記 | `rules/auth.md` |
 | Cookie は `SameSite=None; Secure` | `SameSite=Strict` | `rules/auth.md` |
-| 動画上限 50MB | 動画 100MB | `rules/api.md`, `rules/security.md` |
 | 認証系 5 回/分（実装済み） | login 10 回/分・register 5 回/分（推奨扱い） | `rules/security.md` |
 | 全入力をサニタイズ | 「文字列フィールドはサニタイズせず、バリデーションで制限する」 | `rules/security.md` |
 | 20 件単位 | `limit` は最大 50 まで指定可 | `rules/api.md` |
@@ -96,14 +95,13 @@
 
 #### 1-3. アップロード制限（ミドルウェアで画像 5MB / 動画 50MB）
 
-- **ステータス**: **未達成**
-- **根拠**:
-  - `backend/cmd/server/main.go:110-117` に `middleware.BodyLimit` がなく、リクエストボディ上限が未設定。
-  - サイズ検証はファイル受信後のサービス層のみ（`backend/internal/service/storage_service.go:20-21` で画像 5MB・**動画 100MB**、`user_handler.go:200` でアバター 5MB）。
-  - `storage_service.go` の `upload` は `io.ReadAll` でファイル全体をメモリに読み込む。
+- **ステータス**: 部分的（2026-11-04 投稿系のみ対応）
+- **対応済み**:
+  - `POST /posts` に `BodyLimit("51M")`、`POST /posts/:id/comments`・`POST /posts/:id/repost` に `BodyLimit("11M")`（`cmd/server/main.go`）。
+  - `maxVideoSize` を 50MB に変更（Swagger 説明・フロントの検証・rules も更新）。
+  - `storage_service.upload` の `io.ReadAll` をやめ、ストリーミング転送に変更。
 - **不足点**:
-  - 動画上限が 100MB で要件（50MB）と不一致。
-  - ミドルウェアでの上限がないため、巨大なボディを送られると multipart 解析（ディスク／メモリ展開）が完了するまで拒否できない。
+  - アバター・バナー（`PUT /users/me/avatar`・`/banner`）と JSON 系 API にはミドルウェアの上限がない。
 - **改善提案**:
   1. `storage_service.go` の `maxVideoSize` を `50 * 1024 * 1024` に変更し、Swagger の説明（`post_handler.go:84`）とフロントの検証も 50MB に揃える。
   2. ルート単位で `BodyLimit` を適用する。
@@ -343,9 +341,10 @@
 - [ ] 期限切れ・失効済みリフレッシュトークンの定期削除（テーブルが増え続けるため）
 
 #### TODO-4: リクエストボディ上限のミドルウェア化（1-3）
-- [ ] `middleware.BodyLimit` を JSON 系（1MB）・画像アップロード（6MB）・投稿（51MB）で適用
-- [ ] `maxVideoSize` を 50MB に変更（Swagger 説明・フロント検証・`rules/api.md` も合わせる）
-- [ ] `storage_service.upload` の `io.ReadAll` をストリーミングに変更
+- [x] `middleware.BodyLimit` を投稿（51MB）・返信／引用リポスト（11MB）で適用
+- [ ] `middleware.BodyLimit` を JSON 系（1MB）・アバター／バナー（6MB）で適用
+- [x] `maxVideoSize` を 50MB に変更（Swagger 説明・フロント検証・`rules/api.md` も合わせる）
+- [x] `storage_service.upload` の `io.ReadAll` をストリーミングに変更
 - [ ] 413 を検証するテストを追加
 
 ### Medium

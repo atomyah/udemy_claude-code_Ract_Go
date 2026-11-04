@@ -51,6 +51,25 @@ describe('PostCard', () => {
     deleteMutate.mockReset();
   });
 
+  test('元の投稿が削除された本文なしのリポストには削除された旨が表示される', () => {
+    renderWithProviders(<PostCard post={makePost({ content: '' })} />);
+
+    expect(screen.getByTestId('post-repost-deleted')).toHaveTextContent('元の投稿は削除されました');
+  });
+
+  test('本文のある投稿には削除された旨が表示されない', () => {
+    renderWithProviders(<PostCard post={makePost()} />);
+
+    expect(screen.queryByTestId('post-repost-deleted')).not.toBeInTheDocument();
+  });
+
+  test('元の投稿が残っている本文なしのリポストには削除された旨が表示されない', () => {
+    const original = { id: 'o1', content: '元の投稿', created_at: new Date().toISOString(), media: [] };
+    renderWithProviders(<PostCard post={makePost({ content: '', repost_of: original })} />);
+
+    expect(screen.queryByTestId('post-repost-deleted')).not.toBeInTheDocument();
+  });
+
   test('自分の投稿のメニューには編集と削除が表示される', async () => {
     const user = userEvent.setup();
     renderWithProviders(<PostCard post={makePost({ user: { ...currentUser } })} />);

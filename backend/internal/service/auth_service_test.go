@@ -46,7 +46,15 @@ func hashedUser(t *testing.T, password string) *model.User {
 		DisplayName:  "タロウ",
 		Theme:        "light",
 		Role:         "user",
+		Status:       model.UserStatusApproved,
 	}
+}
+
+// autoApproveConfig は E2E テスト環境と同じく新規登録ユーザーを自動承認する設定
+func autoApproveConfig() *config.Config {
+	cfg := testConfig()
+	cfg.AutoApproveUsers = true
+	return cfg
 }
 
 // parseToken は署名検証したうえでクレームを取り出す
@@ -71,7 +79,7 @@ func TestAuthService_Register_Success(t *testing.T) {
 			args.Get(1).(*model.User).ID = uuid.New()
 		}).Return(nil)
 
-	svc := NewAuthService(testConfig(), userRepo, acceptingRefreshTokenRepo(), nil)
+	svc := NewAuthService(autoApproveConfig(), userRepo, acceptingRefreshTokenRepo(), nil)
 	result, err := svc.Register(context.Background(), &dto.RegisterRequest{
 		Email:       "taro@example.com",
 		Password:    "password123",
@@ -80,6 +88,7 @@ func TestAuthService_Register_Success(t *testing.T) {
 	})
 
 	require.NoError(t, err)
+	assert.False(t, result.PendingApproval)
 	assert.NotEmpty(t, result.AccessToken)
 	assert.NotEmpty(t, result.RefreshToken)
 	assert.Equal(t, "taro", result.User.Handle)
@@ -93,6 +102,82 @@ func TestAuthService_Register_Success(t *testing.T) {
 	assert.NoError(t, bcrypt.CompareHashAndPassword([]byte(*created.PasswordHash), []byte("password123")))
 	assert.Equal(t, "user", created.Role)
 	assert.Equal(t, "light", created.Theme)
+}
+
+// 通常（自動承認なし）は新規ユーザーを承認待ちで作成し、トークンを発行しない
+func TestAuthService_Register_PendingByDefault(t *testing.T) {
+	userRepo := new(mockUserRepo)
+	userRepo.On("ExistsByEmail", mock.Anything, "taro@example.com").Return(false, nil)
+	userRepo.On("ExistsByHandle", mock.Anything, "taro").Return(false, nil)
+	userRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.User")).Return(nil)
+	refreshRepo := new(mockRefreshTokenRepo)
+
+	svc := NewAuthService(testConfig(), userRepo, refreshRepo, nil)
+	result, err := svc.Register(context.Background(), &dto.RegisterRequest{
+		Email: "taro@example.com", Password: "password123", Handle: "taro", DisplayName: "タロウ",
+	})
+
+	require.NoError(t, err)
+	assert.True(t, result.PendingApproval)
+	assert.Empty(t, result.AccessToken)
+	assert.Empty(t, result.RefreshToken)
+	created := userRepo.Calls[2].Arguments.Get(1).(*model.User)
+	assert.Equal(t, model.UserStatusPending, created.Status)
+	refreshRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+}
+
+// AUTO_APPROVE_USERS はテスト環境以外では無視され、必ず承認待ちになる
+func TestAuthService_Register_AutoApproveIgnoredOutsideTest(t *testing.T) {
+	userRepo := new(mockUserRepo)
+	userRepo.On("ExistsByEmail", mock.Anything, "taro@example.com").Return(false, nil)
+	userRepo.On("ExistsByHandle", mock.Anything, "taro").Return(false, nil)
+	userRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.User")).Return(nil)
+
+	cfg := autoApproveConfig()
+	cfg.Env = "production"
+	svc := NewAuthService(cfg, userRepo, new(mockRefreshTokenRepo), nil)
+	result, err := svc.Register(context.Background(), &dto.RegisterRequest{
+		Email: "taro@example.com", Password: "password123", Handle: "taro", DisplayName: "タロウ",
+	})
+
+	require.NoError(t, err)
+	assert.True(t, result.PendingApproval)
+}
+
+// 承認待ち・拒否されたユーザーは正しいパスワードでもログインできない
+func TestAuthService_Login_NotApproved(t *testing.T) {
+	for _, tc := range []struct {
+		status  string
+		wantErr error
+	}{
+		{model.UserStatusPending, ErrAccountPending},
+		{model.UserStatusRejected, ErrAccountRejected},
+	} {
+		user := hashedUser(t, "password123")
+		user.Status = tc.status
+		userRepo := new(mockUserRepo)
+		userRepo.On("FindByEmail", mock.Anything, "taro@example.com").Return(user, nil)
+		refreshRepo := new(mockRefreshTokenRepo)
+
+		svc := NewAuthService(testConfig(), userRepo, refreshRepo, nil)
+		_, err := svc.Login(context.Background(), &dto.LoginRequest{Email: "taro@example.com", Password: "password123"})
+
+		assert.ErrorIs(t, err, tc.wantErr, tc.status)
+		refreshRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+	}
+}
+
+// パスワードが誤っているときは審査状態を明かさず認証エラーにする
+func TestAuthService_Login_PendingWithWrongPassword(t *testing.T) {
+	user := hashedUser(t, "password123")
+	user.Status = model.UserStatusPending
+	userRepo := new(mockUserRepo)
+	userRepo.On("FindByEmail", mock.Anything, "taro@example.com").Return(user, nil)
+
+	svc := NewAuthService(testConfig(), userRepo, new(mockRefreshTokenRepo), nil)
+	_, err := svc.Login(context.Background(), &dto.LoginRequest{Email: "taro@example.com", Password: "wrong-password"})
+
+	assert.ErrorIs(t, err, ErrInvalidCredentials)
 }
 
 func TestAuthService_Register_EmailTaken(t *testing.T) {
@@ -189,7 +274,7 @@ func TestAuthService_Login_SuspendedAccount(t *testing.T) {
 }
 
 func TestAuthService_Login_GoogleOnlyAccountHasNoPassword(t *testing.T) {
-	user := &model.User{ID: uuid.New(), Email: "taro@example.com", Handle: "taro", Role: "user"}
+	user := &model.User{ID: uuid.New(), Email: "taro@example.com", Handle: "taro", Role: "user", Status: model.UserStatusApproved}
 	userRepo := new(mockUserRepo)
 	userRepo.On("FindByEmail", mock.Anything, "taro@example.com").Return(user, nil)
 

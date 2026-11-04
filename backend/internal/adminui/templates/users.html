@@ -1,0 +1,57 @@
+{{define "content"}}
+<h1>ユーザー一覧</h1>
+
+<div class="tabs">
+  <a href="/admin/users" class="{{if eq .Data.Status ""}}active{{end}}">すべて</a>
+  <a href="/admin/users?status=pending" class="{{if eq .Data.Status "pending"}}active{{end}}">承認待ち</a>
+  <a href="/admin/users?status=approved" class="{{if eq .Data.Status "approved"}}active{{end}}">承認済み</a>
+  <a href="/admin/users?status=rejected" class="{{if eq .Data.Status "rejected"}}active{{end}}">拒否</a>
+</div>
+
+{{if .Data.Users}}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>ハンドル</th><th>表示名</th><th>メールアドレス</th><th>ステータス</th><th>登録日時</th><th>操作</th></tr>
+    </thead>
+    <tbody>
+    {{$csrf := .CSRF}}
+    {{range .Data.Users}}
+      <tr>
+        <td><a href="/admin/users/{{.ID}}">@{{.Handle}}</a></td>
+        <td>{{.DisplayName}}</td>
+        <td>{{.Email}}</td>
+        <td>
+          <span class="badge {{.Status}}">{{userStatusLabel .Status}}</span>
+          {{if .IsSuspended}}<span class="badge suspended">停止中</span>{{end}}
+        </td>
+        <td>{{formatTime .CreatedAt}}</td>
+        <td>
+          <div class="actions">
+            {{if ne .Status "approved"}}
+            <form method="post" action="/admin/users/{{.ID}}/approve" class="inline">
+              <input type="hidden" name="_csrf" value="{{$csrf}}">
+              <button type="submit" class="btn primary">承認</button>
+            </form>
+            {{end}}
+            {{if eq .Status "pending"}}
+            <form method="post" action="/admin/users/{{.ID}}/reject" class="inline">
+              <input type="hidden" name="_csrf" value="{{$csrf}}">
+              <button type="submit" class="btn danger">拒否</button>
+            </form>
+            {{end}}
+            <a class="btn" href="/admin/users/{{.ID}}">詳細</a>
+          </div>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{if .Data.NextCursor}}
+<div class="pager"><a class="btn" href="/admin/users?status={{.Data.Status}}&amp;cursor={{.Data.NextCursor}}">次の 20 件</a></div>
+{{end}}
+{{else}}
+<div class="card"><p class="muted">該当するユーザーはいません。</p></div>
+{{end}}
+{{end}}

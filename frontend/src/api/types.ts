@@ -23,6 +23,9 @@ export type AuthResponse = Schemas['github_com_atyahara_sns-backend_internal_dto
 export type LoginRequest = Schemas['github_com_atyahara_sns-backend_internal_dto.LoginRequest'];
 export type RegisterRequest = Schemas['github_com_atyahara_sns-backend_internal_dto.RegisterRequest'];
 export type GoogleLoginRequest = Schemas['github_com_atyahara_sns-backend_internal_dto.GoogleLoginRequest'];
+export type PasswordResetRequestRequest =
+  Schemas['github_com_atyahara_sns-backend_internal_dto.PasswordResetRequestRequest'];
+export type PasswordResetRequest = Schemas['github_com_atyahara_sns-backend_internal_dto.PasswordResetRequest'];
 
 export type UpdateProfileRequest = Schemas['github_com_atyahara_sns-backend_internal_dto.UpdateProfileRequest'];
 export type UpdateThemeRequest = Schemas['github_com_atyahara_sns-backend_internal_dto.UpdateThemeRequest'];

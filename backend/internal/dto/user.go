@@ -5,7 +5,9 @@ type UserResponse struct {
 	ID    string  `json:"id"              example:"550e8400-e29b-41d4-a716-446655440000"`
 	Email *string `json:"email,omitempty" example:"user@example.com"`
 	// Role は本人の情報（ログイン・リフレッシュ・GET /users/me）のときだけ返す（他人のプロフィールでは省略）
-	Role           *string `json:"role,omitempty"  example:"user"`
+	Role *string `json:"role,omitempty"  example:"user"`
+	// Status は登録審査の状態（pending / approved / rejected）。本人の情報のときだけ返す
+	Status         *string `json:"status,omitempty" example:"approved" enums:"pending,approved,rejected"`
 	Handle         string  `json:"handle"          example:"john_doe"`
 	DisplayName    string  `json:"display_name"    example:"John Doe"`
 	AvatarURL      *string `json:"avatar_url"      example:"https://storage.googleapis.com/bucket/avatar.jpg"`

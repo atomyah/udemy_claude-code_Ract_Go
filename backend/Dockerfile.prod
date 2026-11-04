@@ -1,0 +1,31 @@
+# 本番用 Dockerfile（Cloud Run の継続デプロイで使用）
+# - ビルドコンテキストは backend/（Cloud Run UI の「ソースの場所」に /backend/Dockerfile.prod を指定する）
+# - 環境変数・シークレットはイメージに含めず、Cloud Run が起動時に注入する（docs/deploy.md）
+# - 待ち受けポートは Cloud Run が渡す PORT 環境変数を config.Load() が読む（未設定時 8080）
+
+# ============================================================
+# ビルドステージ
+# ============================================================
+FROM golang:1.24-alpine AS builder
+WORKDIR /src
+
+# 依存だけ先に取得してレイヤーキャッシュを効かせる
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+# 静的リンク・デバッグ情報なしの単一バイナリ。管理画面のテンプレートと Swagger 定義は go:embed / docs パッケージで同梱される
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
+
+# ============================================================
+# 実行ステージ（シェル・パッケージマネージャーなし。CA 証明書・tzdata 入り）
+# ============================================================
+FROM gcr.io/distroless/static-debian12:nonroot
+
+COPY --from=builder /out/server /server
+
+ENV ENV=production
+USER nonroot:nonroot
+EXPOSE 8080
+
+CMD ["/server"]

@@ -33,7 +33,7 @@ func NewAuthHandler(svc service.AuthService, cookies AuthCookieConfig) *AuthHand
 
 // Register godoc
 // @Summary      新規ユーザー登録
-// @Description  メールアドレス・パスワード・ハンドル・表示名でユーザーを作成し、Access Token・Refresh Token を HttpOnly Cookie で返す
+// @Description  メールアドレス・パスワード・ハンドル・表示名でユーザーを作成する。新規ユーザーは管理者の承認待ち（pending）になり、Cookie は発行せず pending_approval=true を返す。承認済みで作成された場合（E2E テスト環境の自動承認）のみ Access Token・Refresh Token を HttpOnly Cookie で返す
 // @Tags         auth
 // @Accept       json
 // @Produce      json
@@ -72,6 +72,9 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		}
 	}
 
+	if result.PendingApproval {
+		return c.JSON(http.StatusCreated, dto.AuthResponse{User: result.User, PendingApproval: true})
+	}
 	h.setAuthCookies(c, result)
 	return c.JSON(http.StatusCreated, dto.AuthResponse{User: result.User})
 }
@@ -86,6 +89,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 // @Success      200   {object} dto.AuthResponse   "ログイン成功"
 // @Failure      400   {object} dto.ErrorResponse  "バリデーションエラー"
 // @Failure      401   {object} dto.ErrorResponse  "メールアドレスまたはパスワードが不正"
+// @Failure      403   {object} dto.ErrorResponse  "管理者の承認待ち（ACCOUNT_PENDING）または登録が拒否された（ACCOUNT_REJECTED）"
 // @Failure      500   {object} dto.ErrorResponse  "サーバーエラー"
 // @Router       /auth/login [post]
 func (h *AuthHandler) Login(c echo.Context) error {
@@ -110,6 +114,8 @@ func (h *AuthHandler) Login(c echo.Context) error {
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "INVALID_CREDENTIALS", Message: "メールアドレスまたはパスワードが正しくありません"})
 		case errors.Is(err, service.ErrAccountSuspended):
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "ACCOUNT_SUSPENDED", Message: "このアカウントは停止されています"})
+		case errors.Is(err, service.ErrAccountPending), errors.Is(err, service.ErrAccountRejected):
+			return accountStatusError(c, err)
 		default:
 			return httperr.Internal(c, httperr.DefaultInternalMessage, err)
 		}
@@ -117,6 +123,15 @@ func (h *AuthHandler) Login(c echo.Context) error {
 
 	h.setAuthCookies(c, result)
 	return c.JSON(http.StatusOK, dto.AuthResponse{User: result.User})
+}
+
+// accountStatusError は承認待ち・拒否されたユーザーのログインを 403 で返す
+// （401 にするとフロントエンドがトークンのリフレッシュを試みるため、権限の問題として 403 にする）
+func accountStatusError(c echo.Context, err error) error {
+	if errors.Is(err, service.ErrAccountRejected) {
+		return c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: "ACCOUNT_REJECTED", Message: "このアカウントの登録は承認されませんでした"})
+	}
+	return c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: "ACCOUNT_PENDING", Message: "アカウントは管理者の承認待ちです。承認の連絡をお待ちください"})
 }
 
 // Logout godoc
@@ -192,6 +207,9 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 		case errors.Is(err, service.ErrAccountSuspended):
 			h.clearAuthCookies(c)
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "ACCOUNT_SUSPENDED", Message: "このアカウントは停止されています"})
+		case errors.Is(err, service.ErrAccountPending), errors.Is(err, service.ErrAccountRejected):
+			h.clearAuthCookies(c)
+			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "ACCOUNT_NOT_APPROVED", Message: "このアカウントは管理者の承認が完了していないため利用できません"})
 		case errors.Is(err, service.ErrInvalidToken), errors.Is(err, service.ErrRevokedToken), errors.Is(err, service.ErrTokenReused):
 			h.clearAuthCookies(c)
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "INVALID_TOKEN", Message: "ログイン情報が無効です。再度ログインしてください"})
@@ -214,6 +232,7 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 // @Success      200   {object} dto.AuthResponse         "ログイン/登録成功"
 // @Failure      400   {object} dto.ErrorResponse        "バリデーションエラー"
 // @Failure      401   {object} dto.ErrorResponse        "IDトークンが無効"
+// @Failure      403   {object} dto.ErrorResponse        "管理者の承認待ち（ACCOUNT_PENDING）または登録が拒否された（ACCOUNT_REJECTED）"
 // @Failure      500   {object} dto.ErrorResponse        "サーバーエラー"
 // @Router       /auth/google [post]
 func (h *AuthHandler) GoogleLogin(c echo.Context) error {
@@ -238,6 +257,8 @@ func (h *AuthHandler) GoogleLogin(c echo.Context) error {
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "INVALID_TOKEN", Message: "Google IDトークンが無効です"})
 		case errors.Is(err, service.ErrAccountSuspended):
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: "ACCOUNT_SUSPENDED", Message: "このアカウントは停止されています"})
+		case errors.Is(err, service.ErrAccountPending), errors.Is(err, service.ErrAccountRejected):
+			return accountStatusError(c, err)
 		default:
 			return httperr.Internal(c, httperr.DefaultInternalMessage, err)
 		}

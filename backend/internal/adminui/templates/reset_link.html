@@ -1,0 +1,18 @@
+{{define "content"}}
+<p><a href="/admin/password-resets">← パスワードリセット申請一覧へ</a></p>
+<h1>パスワードリセットリンクを発行しました</h1>
+
+<div class="card">
+  <dl class="detail">
+    <dt>対象ユーザー</dt><dd>@{{.Data.User.Handle}}（{{.Data.User.DisplayName}}）</dd>
+    <dt>送付先メールアドレス</dt><dd>{{.Data.User.Email}}</dd>
+    <dt>有効期限</dt><dd>{{formatTime .Data.ExpiresAt}}（1 回限り有効）</dd>
+  </dl>
+  <h2>リセットリンク</h2>
+  <div class="link-box">{{.Data.URL}}</div>
+  <p class="hint">
+    このリンクはこの画面でしか表示されません（DB にはハッシュだけを保存しています）。
+    コピーしてユーザーにメールで送付してください。画面を閉じた後に必要になった場合は再発行してください（以前のリンクは無効になります）。
+  </p>
+</div>
+{{end}}

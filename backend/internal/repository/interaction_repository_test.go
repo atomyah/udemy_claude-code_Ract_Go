@@ -203,6 +203,53 @@ func TestMediaRepository_CreateBulkAndFind(t *testing.T) {
 	assert.Empty(t, empty)
 }
 
+func TestPostRepository_Create_SavesMediaWithPost(t *testing.T) {
+	db := setupDB(t)
+	repo := NewPostRepository(db)
+	ctx := testCtx()
+	user := createUser(t, db, "taro")
+
+	postID := uuid.New()
+	post := &model.Post{
+		ID:      postID,
+		UserID:  user.ID,
+		Content: "画像付き投稿",
+		Media: []model.Media{
+			{PostID: postID, StoragePath: "posts/p/0.png", Type: "image", SortOrder: 0},
+			{PostID: postID, StoragePath: "posts/p/1.png", Type: "image", SortOrder: 1},
+		},
+	}
+	require.NoError(t, repo.Create(ctx, post))
+
+	found, err := repo.FindByID(ctx, postID)
+	require.NoError(t, err)
+	require.Len(t, found.Media, 2)
+	byOrder := map[int]model.Media{found.Media[0].SortOrder: found.Media[0], found.Media[1].SortOrder: found.Media[1]}
+	assert.Equal(t, "posts/p/0.png", byOrder[0].StoragePath)
+	assert.Equal(t, "posts/p/1.png", byOrder[1].StoragePath)
+	assert.Empty(t, byOrder[0].URL)
+}
+
+func TestPostRepository_Create_RollsBackPostWhenMediaFails(t *testing.T) {
+	db := setupDB(t)
+	repo := NewPostRepository(db)
+	ctx := testCtx()
+	user := createUser(t, db, "taro")
+
+	postID := uuid.New()
+	err := repo.Create(ctx, &model.Post{
+		ID:      postID,
+		UserID:  user.ID,
+		Content: "メディア保存に失敗する投稿",
+		// type は VARCHAR(10) なので長すぎる値は保存に失敗する
+		Media: []model.Media{{PostID: postID, StoragePath: "posts/p/0.png", Type: "too-long-media-type"}},
+	})
+	require.Error(t, err)
+
+	_, err = repo.FindByID(ctx, postID)
+	assert.ErrorIs(t, err, ErrNotFound)
+}
+
 func TestSearchRepository_SearchUsersAndPosts(t *testing.T) {
 	db := setupDB(t)
 	repo := NewSearchRepository(db)

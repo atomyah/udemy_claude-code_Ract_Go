@@ -537,3 +537,48 @@ func TestAuthHandler_Register_MultibytePasswordExceedingBcryptLimit(t *testing.T
 	assert.Equal(t, "VALIDATION_ERROR", errBody.Code)
 	assert.Contains(t, errBody.Message, "パスワードが長すぎます")
 }
+
+// 承認待ちで登録されたときは Cookie を発行せず pending_approval=true を返す
+func TestAuthHandler_Register_PendingApproval_DoesNotSetCookies(t *testing.T) {
+	svc := new(mockAuthSvc)
+	result := &service.AuthResult{
+		User:            dto.UserResponse{ID: uuid.NewString(), Handle: "taro", DisplayName: "タロウ"},
+		PendingApproval: true,
+	}
+	svc.On("Register", mock.Anything, mock.AnythingOfType("*dto.RegisterRequest")).Return(result, nil)
+
+	c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/register",
+		`{"email":"taro@example.com","password":"password123","handle":"taro","display_name":"タロウ"}`)
+
+	require.NoError(t, newTestAuthHandler(svc).Register(c))
+
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	var body dto.AuthResponse
+	decodeJSON(t, rec, &body)
+	assert.True(t, body.PendingApproval)
+	assert.Empty(t, rec.Result().Cookies(), "承認待ちのユーザーにはログイン Cookie を発行しない")
+}
+
+// 承認待ち・拒否されたユーザーのログインは 403 と日本語メッセージを返す（401 にするとフロントがリフレッシュを試みるため）
+func TestAuthHandler_Login_NotApproved_Returns403(t *testing.T) {
+	for _, tc := range []struct {
+		err     error
+		code    string
+		message string
+	}{
+		{service.ErrAccountPending, "ACCOUNT_PENDING", "アカウントは管理者の承認待ちです。承認の連絡をお待ちください"},
+		{service.ErrAccountRejected, "ACCOUNT_REJECTED", "このアカウントの登録は承認されませんでした"},
+	} {
+		svc := new(mockAuthSvc)
+		svc.On("Login", mock.Anything, mock.AnythingOfType("*dto.LoginRequest")).Return(nil, tc.err)
+
+		c, rec := newJSONContext(t, http.MethodPost, "/api/v1/auth/login", `{"email":"taro@example.com","password":"password123"}`)
+
+		require.NoError(t, newTestAuthHandler(svc).Login(c))
+
+		assert.Equal(t, http.StatusForbidden, rec.Code, tc.code)
+		body := decodeErrorResponse(t, rec)
+		assert.Equal(t, tc.code, body.Code)
+		assert.Equal(t, tc.message, body.Message)
+	}
+}

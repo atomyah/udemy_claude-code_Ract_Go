@@ -356,7 +356,7 @@ func TestPostHandler_CreatePost_SpecialCharactersArePassedThrough(t *testing.T) 
 }
 
 // TestPostHandler_CreatePost_FileTooLarge_ReturnsJapaneseMessage は
-// サイズ上限（画像5MB・動画100MB）を超えたメディアが400と日本語メッセージで返ることを検証する
+// サイズ上限（画像5MB・動画50MB）を超えたメディアが400と日本語メッセージで返ることを検証する
 func TestPostHandler_CreatePost_FileTooLarge_ReturnsJapaneseMessage(t *testing.T) {
 	userID := uuid.New()
 	postSvc := new(mockPostSvc)

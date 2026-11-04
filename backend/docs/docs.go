@@ -795,7 +795,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "テキスト必須（最大280文字）、画像最大4枚、動画最大1本を投稿する。ハッシュタグ・メンションは自動解析される",
+                "description": "テキスト必須（最大280文字）、画像最大4枚、動画最大1本を投稿する。ハッシュタグ・メンションは自動解析される。レスポンスのメディアURLは期限付きの署名付きURL",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -816,7 +816,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "file",
-                        "description": "メディアファイル（画像JPEG/PNG/WebP最大4枚各5MB、動画MP4/MOV最大1本100MB）",
+                        "description": "メディアファイル（画像JPEG/PNG/WebP最大4枚各5MB、動画MP4/MOV最大1本50MB）",
                         "name": "media",
                         "in": "formData"
                     }
@@ -836,6 +836,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "未認証",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "リクエストサイズ超過",
                         "schema": {
                             "$ref": "#/definitions/github_com_atyahara_sns-backend_internal_dto.ErrorResponse"
                         }
@@ -1267,7 +1273,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "file",
-                        "description": "メディアファイル（画像最大4枚 or 動画1本）",
+                        "description": "メディアファイル（画像JPEG/PNG/WebP最大2枚各5MB）",
                         "name": "media",
                         "in": "formData"
                     }
@@ -2661,7 +2667,7 @@ const docTemplate = `{
                 },
                 "url": {
                     "type": "string",
-                    "example": "https://storage.googleapis.com/bucket/image.jpg"
+                    "example": "https://storage.googleapis.com/bucket/posts/550e8400-e29b-41d4-a716-446655440003/550e8400-e29b-41d4-a716-446655440001.jpg?X-Goog-Algorithm=GOOG4-RSA-SHA256"
                 }
             }
         },

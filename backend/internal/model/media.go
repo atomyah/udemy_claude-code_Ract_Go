@@ -8,11 +8,14 @@ import (
 )
 
 type Media struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
-	PostID    uuid.UUID `gorm:"type:uuid;not null;index"`
-	URL       string    `gorm:"size:500;not null"`
-	Type      string    `gorm:"size:10;not null"`
-	SortOrder int       `gorm:"not null;default:0"`
+	ID     uuid.UUID `gorm:"type:uuid;primaryKey"`
+	PostID uuid.UUID `gorm:"type:uuid;not null;index"`
+	// StoragePath は Storage 上のオブジェクトパス（posts/{post_id}/{uuid}.jpg）。表示時に署名付きURLへ変換する
+	StoragePath string `gorm:"size:500;not null;default:''"`
+	// URL は公開URLで保存していた既存行のためだけに残す（新規行は空文字）
+	URL       string `gorm:"size:500;not null;default:''"`
+	Type      string `gorm:"size:10;not null"`
+	SortOrder int    `gorm:"not null;default:0"`
 	CreatedAt time.Time
 }
 

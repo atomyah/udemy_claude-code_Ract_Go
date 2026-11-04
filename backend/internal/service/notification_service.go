@@ -21,10 +21,11 @@ type NotificationService interface {
 
 type notificationService struct {
 	notificationRepo repository.NotificationRepository
+	signer           MediaURLSigner
 }
 
-func NewNotificationService(notificationRepo repository.NotificationRepository) NotificationService {
-	return &notificationService{notificationRepo: notificationRepo}
+func NewNotificationService(notificationRepo repository.NotificationRepository, signer MediaURLSigner) NotificationService {
+	return &notificationService{notificationRepo: notificationRepo, signer: signer}
 }
 
 func (s *notificationService) Notify(ctx context.Context, recipientID, actorID uuid.UUID, notifType string, postID *uuid.UUID) error {
@@ -59,7 +60,7 @@ func (s *notificationService) GetNotifications(ctx context.Context, userID uuid.
 	for i, n := range notifications {
 		var post *dto.PostSummary
 		if n.Post != nil {
-			post = toPostSummary(n.Post)
+			post = toPostSummary(ctx, s.signer, n.Post)
 		}
 		data[i] = dto.NotificationResponse{
 			ID:        n.ID.String(),

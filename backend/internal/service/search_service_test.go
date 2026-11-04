@@ -118,7 +118,7 @@ func TestNotificationService_GetNotifications_Success(t *testing.T) {
 		Return([]model.Notification{notification}, nil, nil)
 	notificationRepo.On("CountUnread", mock.Anything, userID).Return(1, nil)
 
-	svc := NewNotificationService(notificationRepo)
+	svc := NewNotificationService(notificationRepo, new(mockStorageSvc))
 	resp, err := svc.GetNotifications(context.Background(), userID, "", 20)
 
 	require.NoError(t, err)
@@ -202,7 +202,7 @@ func TestPostService_GetUserPostsAndComments(t *testing.T) {
 	postRepo.On("GetComments", mock.Anything, postID, (*time.Time)(nil), 20).Return([]model.Post{}, nil, nil)
 	expectStats(postRepo)
 
-	svc := NewPostService(postRepo, new(mockMediaRepo), new(mockHashtagRepo), userRepo, likeRepo, bookmarkRepo, new(mockStorageSvc), new(mockNotificationSvc))
+	svc := NewPostService(postRepo, new(mockHashtagRepo), userRepo, likeRepo, bookmarkRepo, new(mockStorageSvc), new(mockNotificationSvc))
 
 	posts, err := svc.GetUserPosts(context.Background(), handle, nil, "", 20)
 	require.NoError(t, err)

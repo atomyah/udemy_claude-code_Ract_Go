@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/atyahara/sns-backend/internal/dto"
+	"github.com/atyahara/sns-backend/internal/logger"
 	"github.com/atyahara/sns-backend/internal/model"
 	"github.com/atyahara/sns-backend/internal/repository"
 	"github.com/atyahara/sns-backend/internal/utils"
@@ -41,7 +42,6 @@ type PostService interface {
 
 type postService struct {
 	postRepo        repository.PostRepository
-	mediaRepo       repository.MediaRepository
 	hashtagRepo     repository.HashtagRepository
 	userRepo        repository.UserRepository
 	likeRepo        repository.LikeRepository
@@ -52,7 +52,6 @@ type postService struct {
 
 func NewPostService(
 	postRepo repository.PostRepository,
-	mediaRepo repository.MediaRepository,
 	hashtagRepo repository.HashtagRepository,
 	userRepo repository.UserRepository,
 	likeRepo repository.LikeRepository,
@@ -62,7 +61,6 @@ func NewPostService(
 ) PostService {
 	return &postService{
 		postRepo:        postRepo,
-		mediaRepo:       mediaRepo,
 		hashtagRepo:     hashtagRepo,
 		userRepo:        userRepo,
 		likeRepo:        likeRepo,
@@ -81,29 +79,25 @@ func (s *postService) CreateWithRefs(ctx context.Context, userID uuid.UUID, cont
 		return nil, err
 	}
 
+	// 保存先パスに使うため投稿IDを先に決める。アップロードに失敗したら投稿は作らない
+	postID := uuid.New()
+	media, err := s.uploadPostMedia(ctx, postID, files)
+	if err != nil {
+		return nil, err
+	}
+
+	// 投稿とメディアは GORM の関連付け保存で同じトランザクションに入る
 	post := &model.Post{
+		ID:       postID,
 		UserID:   userID,
 		Content:  content,
 		ReplyTo:  replyTo,
 		RepostOf: repostOf,
+		Media:    media,
 	}
 	if err := s.postRepo.Create(ctx, post); err != nil {
+		s.deleteUploadedMedia(ctx, media)
 		return nil, err
-	}
-
-	if len(files) > 0 {
-		media := make([]model.Media, 0, len(files))
-		for i, fh := range files {
-			url, mediaType, err := s.storageSvc.UploadPostMedia(ctx, "posts", fh)
-			if err != nil {
-				return nil, err
-			}
-			media = append(media, model.Media{PostID: post.ID, URL: url, Type: mediaType, SortOrder: i})
-		}
-		if err := s.mediaRepo.CreateBulk(ctx, media); err != nil {
-			return nil, err
-		}
-		post.Media = media
 	}
 
 	if tags := utils.ExtractHashtags(content); len(tags) > 0 {
@@ -124,12 +118,37 @@ func (s *postService) CreateWithRefs(ctx context.Context, userID uuid.UUID, cont
 		return nil, err
 	}
 
-	post, err := s.postRepo.FindByID(ctx, post.ID)
+	post, err = s.postRepo.FindByID(ctx, post.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	return s.ToPostResponse(ctx, post, &userID)
+}
+
+// uploadPostMedia はファイルを順番にアップロードする。途中で失敗したらアップロード済みの分を削除する
+func (s *postService) uploadPostMedia(ctx context.Context, postID uuid.UUID, files []*multipart.FileHeader) ([]model.Media, error) {
+	media := make([]model.Media, 0, len(files))
+	for i, fh := range files {
+		objectPath, mediaType, err := s.storageSvc.UploadPostMedia(ctx, postID, fh)
+		if err != nil {
+			s.deleteUploadedMedia(ctx, media)
+			return nil, err
+		}
+		media = append(media, model.Media{PostID: postID, StoragePath: objectPath, Type: mediaType, SortOrder: i})
+	}
+	return media, nil
+}
+
+func (s *postService) deleteUploadedMedia(ctx context.Context, media []model.Media) {
+	if len(media) == 0 {
+		return
+	}
+	objectPaths := make([]string, len(media))
+	for i, m := range media {
+		objectPaths[i] = m.StoragePath
+	}
+	s.storageSvc.DeleteObjects(ctx, objectPaths)
 }
 
 // notifyMentions は本文中の@ハンドルにメンション通知を作成する。
@@ -303,13 +322,13 @@ func (s *postService) ToPostResponses(ctx context.Context, posts []model.Post, v
 	}
 
 	for i := range posts {
-		data = append(data, buildPostResponse(&posts[i], stats[posts[i].ID]))
+		data = append(data, buildPostResponse(ctx, s.storageSvc, &posts[i], stats[posts[i].ID]))
 	}
 	return data, nil
 }
 
 // buildPostResponse は投稿と集計値からレスポンスを組み立てる（DBアクセスなし）
-func buildPostResponse(post *model.Post, stats repository.PostStats) dto.PostResponse {
+func buildPostResponse(ctx context.Context, signer MediaURLSigner, post *model.Post, stats repository.PostStats) dto.PostResponse {
 	var replyTo *string
 	var replyToUser *dto.UserInPost
 	if post.ReplyTo != nil {
@@ -323,14 +342,14 @@ func buildPostResponse(post *model.Post, stats repository.PostStats) dto.PostRes
 
 	var repostOf *dto.PostSummary
 	if post.RepostOfPost != nil {
-		repostOf = toPostSummary(post.RepostOfPost)
+		repostOf = toPostSummary(ctx, signer, post.RepostOfPost)
 	}
 
 	return dto.PostResponse{
 		ID:            post.ID.String(),
 		User:          toUserInPost(post.User),
 		Content:       post.Content,
-		Media:         toMediaResponses(post.Media),
+		Media:         toMediaResponses(ctx, signer, post.Media),
 		LikesCount:    stats.LikesCount,
 		CommentsCount: stats.CommentsCount,
 		RepostsCount:  stats.RepostsCount,
@@ -355,25 +374,39 @@ func toUserInPost(u model.User) dto.UserInPost {
 	}
 }
 
-func toMediaResponses(media []model.Media) []dto.MediaResponse {
-	resp := make([]dto.MediaResponse, len(media))
-	for i, m := range media {
-		resp[i] = dto.MediaResponse{ID: m.ID.String(), URL: m.URL, Type: m.Type, SortOrder: m.SortOrder}
+// toMediaResponses はメディアを閲覧URL付きのレスポンスに変換する。
+// storage_path を持つ行は署名付きURLを発行し、公開URLで保存した既存行は url をそのまま返す。
+// 署名はローカル処理のためメディア数だけ通信が発生することはない。
+// 署名に失敗したメディアは一覧全体を失敗させず、ログに残してレスポンスから外す
+func toMediaResponses(ctx context.Context, signer MediaURLSigner, media []model.Media) []dto.MediaResponse {
+	resp := make([]dto.MediaResponse, 0, len(media))
+	for _, m := range media {
+		url := m.URL
+		if m.StoragePath != "" {
+			signed, err := signer.SignedURL(m.StoragePath)
+			if err != nil {
+				logger.FromContext(ctx).Warn().Err(err).Str("media_id", m.ID.String()).Msg("failed to sign media url")
+				continue
+			}
+			url = signed
+		}
+		resp = append(resp, dto.MediaResponse{ID: m.ID.String(), URL: url, Type: m.Type, SortOrder: m.SortOrder})
 	}
 	return resp
 }
 
-func toPostSummary(p *model.Post) *dto.PostSummary {
+func toPostSummary(ctx context.Context, signer MediaURLSigner, p *model.Post) *dto.PostSummary {
 	return &dto.PostSummary{
 		ID:        p.ID.String(),
 		User:      toUserInPost(p.User),
 		Content:   p.Content,
-		Media:     toMediaResponses(p.Media),
+		Media:     toMediaResponses(ctx, signer, p.Media),
 		CreatedAt: p.CreatedAt.Format(time.RFC3339),
 	}
 }
 
-// validateMediaFiles は投稿メディアの枚数・種別制約を検証する
+// validateMediaFiles は投稿メディアの形式・サイズ・枚数を検証する。
+// 1 件でも不正なら 1 件もアップロードしないよう、アップロードの前に全ファイルを確認する
 func validateMediaFiles(files []*multipart.FileHeader, maxImages int, allowVideo bool) error {
 	if len(files) == 0 {
 		return nil
@@ -381,17 +414,20 @@ func validateMediaFiles(files []*multipart.FileHeader, maxImages int, allowVideo
 
 	videoCount := 0
 	for _, fh := range files {
-		contentType := detectContentType(fh)
-		switch {
-		case allowedImageExtensions[contentType] != "":
+		mediaType, maxSize, _ := postMediaRule(detectContentType(fh))
+		switch mediaType {
+		case mediaTypeImage:
 			// 画像はOK
-		case allowedVideoExtensions[contentType] != "":
+		case mediaTypeVideo:
 			if !allowVideo {
 				return ErrUnsupportedFileType
 			}
 			videoCount++
 		default:
 			return ErrUnsupportedFileType
+		}
+		if fh.Size > maxSize {
+			return ErrFileTooLarge
 		}
 	}
 

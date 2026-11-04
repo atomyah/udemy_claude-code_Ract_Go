@@ -67,7 +67,6 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	followRepo := repository.NewFollowRepository(db)
 	postRepo := repository.NewPostRepository(db)
-	mediaRepo := repository.NewMediaRepository(db)
 	hashtagRepo := repository.NewHashtagRepository(db)
 	likeRepo := repository.NewLikeRepository(db)
 	bookmarkRepo := repository.NewBookmarkRepository(db)
@@ -89,11 +88,18 @@ func main() {
 		logger.L().Warn().Err(err).Msg("firebase app init skipped (ENV=test)")
 		fbApp = nil
 	}
+	storageSvc, err := service.NewStorageService(cfg, fbApp)
+	if err != nil {
+		if !cfg.IsTest() {
+			logger.L().Fatal().Err(err).Msg("firebase storage init failed")
+		}
+		logger.L().Warn().Err(err).Msg("firebase storage init skipped (ENV=test)")
+		storageSvc = service.NewUnavailableStorageService()
+	}
 	authSvc := service.NewAuthService(cfg, userRepo, refreshTokenRepo, fbApp)
-	notificationSvc := service.NewNotificationService(notificationRepo)
-	storageSvc := service.NewStorageService(cfg, fbApp)
+	notificationSvc := service.NewNotificationService(notificationRepo, storageSvc)
 	userSvc := service.NewUserService(userRepo, followRepo, notificationSvc)
-	postSvc := service.NewPostService(postRepo, mediaRepo, hashtagRepo, userRepo, likeRepo, bookmarkRepo, storageSvc, notificationSvc)
+	postSvc := service.NewPostService(postRepo, hashtagRepo, userRepo, likeRepo, bookmarkRepo, storageSvc, notificationSvc)
 	likeSvc := service.NewLikeService(postRepo, likeRepo, notificationSvc)
 	repostSvc := service.NewRepostService(postRepo, postSvc, notificationSvc)
 	bookmarkSvc := service.NewBookmarkService(postRepo, bookmarkRepo, postSvc)
@@ -174,6 +180,12 @@ func main() {
 	authRateLimit := appMiddleware.AuthRateLimit(cfg.AuthRateLimit)
 	generalRateLimit := appMiddleware.GeneralRateLimit(cfg.GeneralRateLimit)
 
+	// メディア付き投稿のリクエストサイズ上限。超過は multipart を解析する前に 413 で拒否する。
+	// 投稿: 動画 50MB（画像 5MB×4 もこの範囲）+ フォーム分。返信・引用リポスト: 画像 5MB×2 + フォーム分。
+	// ファイルごとの上限はサービス層で検証する
+	postBodyLimit := middleware.BodyLimit("51M")
+	replyBodyLimit := middleware.BodyLimit("11M")
+
 	// --- 認証（認証不要） ---
 	// ログイン・登録（Google ログインを含む）は認証系のレート制限。パスワードリセットAPIを追加する場合も authRateLimit を付ける
 	auth := v1.Group("/auth")
@@ -210,17 +222,17 @@ func main() {
 	// --- 投稿 ---
 	api.GET("/posts", postHandler.GetExplore)
 	api.GET("/posts/home", postHandler.GetHome, jwtMiddleware)
-	api.POST("/posts", postHandler.CreatePost, jwtMiddleware)
+	api.POST("/posts", postHandler.CreatePost, jwtMiddleware, postBodyLimit)
 	api.GET("/posts/:id", postHandler.GetPost)
 	api.PUT("/posts/:id", postHandler.UpdatePost, jwtMiddleware)
 	api.DELETE("/posts/:id", postHandler.DeletePost, jwtMiddleware)
 	api.GET("/posts/:id/comments", postHandler.GetComments)
-	api.POST("/posts/:id/comments", postHandler.CreateComment, jwtMiddleware)
+	api.POST("/posts/:id/comments", postHandler.CreateComment, jwtMiddleware, replyBodyLimit)
 
 	// --- インタラクション ---
 	api.POST("/posts/:id/like", interactionHandler.Like, jwtMiddleware)
 	api.DELETE("/posts/:id/like", interactionHandler.Unlike, jwtMiddleware)
-	api.POST("/posts/:id/repost", interactionHandler.Repost, jwtMiddleware)
+	api.POST("/posts/:id/repost", interactionHandler.Repost, jwtMiddleware, replyBodyLimit)
 	api.DELETE("/posts/:id/repost", interactionHandler.Unrepost, jwtMiddleware)
 	api.POST("/posts/:id/bookmark", interactionHandler.Bookmark, jwtMiddleware)
 	api.DELETE("/posts/:id/bookmark", interactionHandler.Unbookmark, jwtMiddleware)

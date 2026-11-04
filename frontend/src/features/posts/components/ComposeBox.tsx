@@ -10,7 +10,7 @@ import type { CreatePostPayload } from '../api';
 const MAX_LENGTH = 280;
 const MAX_IMAGES = 4;
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
-const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024;
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const VIDEO_TYPES = ['video/mp4', 'video/quicktime'];
 
@@ -62,8 +62,12 @@ export const ComposeBox = ({
       setFileError('画像はJPEG/PNG/WebP形式、5MB以内にしてください');
       return;
     }
+    if (files.length + selected.length > MAX_IMAGES) {
+      setFileError(`画像は${MAX_IMAGES}枚まで添付できます`);
+      return;
+    }
     setFileError(null);
-    setFiles((prev) => [...prev, ...selected].slice(0, MAX_IMAGES));
+    setFiles((prev) => [...prev, ...selected]);
   };
 
   const handleVideoSelect = (event: ChangeEvent<HTMLInputElement>) => {
@@ -75,7 +79,7 @@ export const ComposeBox = ({
       return;
     }
     if (!VIDEO_TYPES.includes(selected.type) || selected.size > MAX_VIDEO_SIZE) {
-      setFileError('動画はMP4/MOV形式、100MB以内にしてください');
+      setFileError('動画はMP4/MOV形式、50MB以内にしてください');
       return;
     }
     setFileError(null);
@@ -87,7 +91,8 @@ export const ComposeBox = ({
     setFileError(null);
   };
 
-  const canSubmit = (content.trim().length > 0 || files.length > 0) && !isPending;
+  // 本文は必須（画像だけの投稿はバックエンドのバリデーションで拒否される）
+  const canSubmit = content.trim().length > 0 && !isPending;
 
   const handleSubmit = () => {
     onSubmit({ content, media: files }, () => {
@@ -138,7 +143,7 @@ export const ComposeBox = ({
                     <Box
                       component="img"
                       src={previewUrls[index]}
-                      alt=""
+                      alt={`添付画像 ${index + 1}`}
                       sx={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 1 }}
                     />
                   )}
@@ -187,6 +192,7 @@ export const ComposeBox = ({
                 multiple
                 hidden
                 onChange={handleImageSelect}
+                data-testid={`${testIdPrefix}-image-input`}
               />
               <input ref={videoInputRef} type="file" accept="video/mp4,video/quicktime" hidden onChange={handleVideoSelect} />
             </Stack>

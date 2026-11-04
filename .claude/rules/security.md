@@ -79,7 +79,8 @@ e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 
 - ファイルの MIME タイプをサーバーサイドで検証する（`Content-Type` ヘッダーだけでなく実際のバイト列でも確認）。
 - 許可する形式: 画像（JPEG / PNG / WebP）、動画（MP4 / MOV）のみ。
-- サイズ制限: 画像 5MB、動画 100MB。Echo のリクエストサイズ制限ミドルウェアで上限を設ける。
+- サイズ制限: 画像 5MB、動画 50MB。Echo のリクエストサイズ制限ミドルウェアで上限を設ける。
+- 投稿メディアは非公開オブジェクトとして保存し、バックエンドが発行する V4 署名付き URL で配信する。Storage の Security Rules は全拒否のままにする。
 - アップロードファイルを直接サーバーのファイルシステムに保存しない（Firebase Storage に転送する）。
 
 ---

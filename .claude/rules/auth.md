@@ -88,6 +88,7 @@ if !ok {
 
 - フロントエンドは `signInWithPopup` で ID Token を取得する。
 - ID Token はバックエンドの `POST /api/v1/auth/google` に送り、バックエンドで Firebase Admin SDK を使って検証する。検証後は通常のログインと同じく Cookie でトークンを返す。
+- メールアドレスで既存アカウントに結び付けるため、`firebase.sign_in_provider` が `google.com` かつ `email_verified` が `true` のトークンだけを受け付ける（それ以外は 401 `INVALID_TOKEN`）。
 - フロントエンドから Firebase Storage や Firestore に直接アクセスしない（Storage のみ許可、Admin SDK 経由）。
 - サービスアカウントの JSON は環境変数 `FIREBASE_CREDENTIALS_JSON` で管理し、ファイルとしてコミットしない。
 

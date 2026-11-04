@@ -58,15 +58,11 @@ func (s *notificationService) GetNotifications(ctx context.Context, userID uuid.
 
 	data := make([]dto.NotificationResponse, len(notifications))
 	for i, n := range notifications {
-		var post *dto.PostSummary
-		if n.Post != nil {
-			post = toPostSummary(ctx, s.signer, n.Post)
-		}
 		data[i] = dto.NotificationResponse{
 			ID:        n.ID.String(),
 			Type:      n.Type,
 			Actor:     toUserInPost(n.Actor),
-			Post:      post,
+			Post:      toPostSummary(ctx, s.signer, n.Post),
 			IsRead:    n.IsRead,
 			CreatedAt: n.CreatedAt.Format(time.RFC3339),
 		}

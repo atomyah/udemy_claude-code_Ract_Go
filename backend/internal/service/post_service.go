@@ -340,11 +340,6 @@ func buildPostResponse(ctx context.Context, signer MediaURLSigner, post *model.P
 		}
 	}
 
-	var repostOf *dto.PostSummary
-	if post.RepostOfPost != nil {
-		repostOf = toPostSummary(ctx, signer, post.RepostOfPost)
-	}
-
 	return dto.PostResponse{
 		ID:            post.ID.String(),
 		User:          toUserInPost(post.User),
@@ -357,7 +352,7 @@ func buildPostResponse(ctx context.Context, signer MediaURLSigner, post *model.P
 		IsBookmarked:  stats.IsBookmarked,
 		IsReposted:    stats.IsReposted,
 		IsEdited:      post.IsEdited,
-		RepostOf:      repostOf,
+		RepostOf:      toPostSummary(ctx, signer, post.RepostOfPost),
 		ReplyTo:       replyTo,
 		ReplyToUser:   replyToUser,
 		CreatedAt:     post.CreatedAt.Format(time.RFC3339),
@@ -395,7 +390,12 @@ func toMediaResponses(ctx context.Context, signer MediaURLSigner, media []model.
 	return resp
 }
 
+// toPostSummary はリポスト元・通知に埋め込む投稿の要約を返す。
+// 削除済みの投稿は本文もメディアの署名付きURLも返さないよう nil にする
 func toPostSummary(ctx context.Context, signer MediaURLSigner, p *model.Post) *dto.PostSummary {
+	if p == nil || p.IsDeleted {
+		return nil
+	}
 	return &dto.PostSummary{
 		ID:        p.ID.String(),
 		User:      toUserInPost(p.User),

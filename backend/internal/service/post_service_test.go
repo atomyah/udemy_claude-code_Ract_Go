@@ -326,6 +326,59 @@ func TestPostService_ToPostResponses_SignsRepostOriginalMedia(t *testing.T) {
 	assert.Equal(t, "https://signed.example.com/original", resps[0].RepostOf.Media[0].URL)
 }
 
+func TestPostService_ToPostResponses_HidesDeletedRepostOriginal(t *testing.T) {
+	postRepo := new(mockPostRepo)
+	expectStats(postRepo)
+	storageSvc := new(mockStorageSvc)
+
+	original := &model.Post{
+		ID:        uuid.New(),
+		Content:   "削除された本文",
+		IsDeleted: true,
+		Media:     []model.Media{{ID: uuid.New(), StoragePath: "posts/o/1.png", Type: "image"}},
+	}
+	repost := model.Post{ID: uuid.New(), RepostOfPost: original}
+
+	resps, err := newPostServiceWithStorage(postRepo, storageSvc).ToPostResponses(context.Background(), []model.Post{repost}, nil)
+
+	require.NoError(t, err)
+	assert.Nil(t, resps[0].RepostOf)
+	// 削除済み投稿のメディアには署名付きURLを発行しない
+	storageSvc.AssertNotCalled(t, "SignedURL", mock.Anything)
+}
+
+func TestNotificationService_GetNotifications_HidesDeletedPost(t *testing.T) {
+	userID := uuid.New()
+	storageSvc := new(mockStorageSvc)
+	storageSvc.On("SignedURL", "posts/a/1.png").Return("https://signed.example.com/active", nil)
+
+	deleted := model.Notification{ID: uuid.New(), Type: "like", Post: &model.Post{
+		ID:        uuid.New(),
+		Content:   "削除された本文",
+		IsDeleted: true,
+		Media:     []model.Media{{ID: uuid.New(), StoragePath: "posts/d/1.png", Type: "image"}},
+	}}
+	active := model.Notification{ID: uuid.New(), Type: "like", Post: &model.Post{
+		ID:      uuid.New(),
+		Content: "公開中の本文",
+		Media:   []model.Media{{ID: uuid.New(), StoragePath: "posts/a/1.png", Type: "image"}},
+	}}
+
+	notificationRepo := new(mockNotificationRepo)
+	notificationRepo.On("GetByUser", mock.Anything, userID, (*time.Time)(nil), 20).
+		Return([]model.Notification{deleted, active}, nil, nil)
+	notificationRepo.On("CountUnread", mock.Anything, userID).Return(2, nil)
+
+	resp, err := NewNotificationService(notificationRepo, storageSvc).GetNotifications(context.Background(), userID, "", 20)
+
+	require.NoError(t, err)
+	require.Len(t, resp.Data, 2, "投稿が削除されても通知自体は残す")
+	assert.Nil(t, resp.Data[0].Post)
+	require.NotNil(t, resp.Data[1].Post)
+	assert.Equal(t, "公開中の本文", resp.Data[1].Post.Content)
+	storageSvc.AssertNotCalled(t, "SignedURL", "posts/d/1.png")
+}
+
 func TestPostService_CreateWithRefs_CommentDoesNotAllowVideo(t *testing.T) {
 	svc := newPostService(new(mockPostRepo), new(mockLikeRepo), new(mockBookmarkRepo))
 

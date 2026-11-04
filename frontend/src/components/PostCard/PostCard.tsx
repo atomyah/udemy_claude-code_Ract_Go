@@ -177,6 +177,12 @@ export const PostCard = ({ post, onCommentClick }: PostCardProps) => {
 
             {(post.media ?? []).length > 0 && <MediaGrid media={post.media ?? []} />}
             {post.repost_of && <QuotedPost quoted={post.repost_of} />}
+            {/* 本文は必須のため、本文もメディアもない投稿は元の投稿が削除されたリポストだけ */}
+            {!post.repost_of && (post.content ?? '').length === 0 && (post.media ?? []).length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }} data-testid="post-repost-deleted">
+                元の投稿は削除されました
+              </Typography>
+            )}
 
             <Stack
               direction="row"

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/auth"
 	"github.com/atyahara/sns-backend/internal/authtoken"
 	"github.com/atyahara/sns-backend/internal/config"
 	"github.com/atyahara/sns-backend/internal/dto"
@@ -72,6 +73,9 @@ type authService struct {
 	fbApp            *firebase.App
 	now              func() time.Time
 }
+
+// googleSignInProvider は Google でサインインした Firebase ID トークンの sign_in_provider
+const googleSignInProvider = "google.com"
 
 func NewAuthService(cfg *config.Config, userRepo repository.UserRepository, refreshTokenRepo repository.RefreshTokenRepository, fbApp *firebase.App) AuthService {
 	return &authService{cfg: cfg, userRepo: userRepo, refreshTokenRepo: refreshTokenRepo, fbApp: fbApp, now: time.Now}
@@ -251,9 +255,9 @@ func (s *authService) LoginWithGoogle(ctx context.Context, idToken string) (*Aut
 		return nil, ErrInvalidIDToken
 	}
 
-	email, _ := token.Claims["email"].(string)
-	if email == "" {
-		return nil, ErrInvalidIDToken
+	email, err := verifiedGoogleEmail(token)
+	if err != nil {
+		return nil, err
 	}
 	name, _ := token.Claims["name"].(string)
 	picture, _ := token.Claims["picture"].(string)
@@ -298,6 +302,24 @@ func (s *authService) LoginWithGoogle(ctx context.Context, idToken string) (*Aut
 	}
 
 	return s.buildAuthResult(ctx, user)
+}
+
+// verifiedGoogleEmail は Google でサインインした確認済みのメールアドレスを ID トークンから取り出す。
+// 同じ Firebase プロジェクトのトークンでも、メール/パスワードなど他のプロバイダーや未確認のアドレスは受け付けない。
+// メールアドレスで既存アカウントに結び付けるため、受け付けると他人のアドレスで未確認の Firebase アカウントを作って
+// そのユーザーとしてログインできてしまう
+func verifiedGoogleEmail(token *auth.Token) (string, error) {
+	if token.Firebase.SignInProvider != googleSignInProvider {
+		return "", ErrInvalidIDToken
+	}
+	if verified, _ := token.Claims["email_verified"].(bool); !verified {
+		return "", ErrInvalidIDToken
+	}
+	email, _ := token.Claims["email"].(string)
+	if email == "" {
+		return "", ErrInvalidIDToken
+	}
+	return email, nil
 }
 
 // initialStatus は新規登録ユーザーの審査ステータスを返す。

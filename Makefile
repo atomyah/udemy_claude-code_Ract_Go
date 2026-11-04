@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev-up dev-down dev-logs test-setup test-teardown test-backend test-frontend test-e2e test perf-timeline
+.PHONY: help dev-up dev-down dev-logs test-setup test-teardown test-backend test-frontend test-e2e test perf-timeline deploy-frontend
 
 COMPOSE      := docker compose
 TEST_COMPOSE := docker compose --profile test
@@ -78,3 +78,8 @@ test:
 	"$(MAKE)" test-e2e; e2e_status=$$?; \
 	sh scripts/test-summary.sh $$backend_status $$e2e_status $$frontend_status; \
 	exit $$((backend_status + frontend_status + e2e_status))
+
+## deploy-frontend: フロントエンドをビルドして Firebase Hosting にデプロイする（frontend/.env.production を使用。手順は docs/deploy.md）
+## FIREBASE_PROJECT=<id> でデプロイ先、SKIP_INSTALL=1 で npm ci の省略を指定できる
+deploy-frontend:
+	bash frontend/scripts/deploy.sh
